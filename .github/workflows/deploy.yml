@@ -1,0 +1,113 @@
+name: Deploy Laravel Blade to DomaiNesia
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Run database seeders after migration
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: domainesia-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: Build & FTP Deploy
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Deployment Secrets
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          test -n "$FTP_SERVER" || { echo "FTP_SERVER is required."; exit 1; }
+          test -n "$FTP_USERNAME" || { echo "FTP_USERNAME is required."; exit 1; }
+          test -n "$FTP_PASSWORD" || { echo "FTP_PASSWORD is required."; exit 1; }
+          test -n "$DEPLOY_SECRET" || { echo "DEPLOY_SECRET is required."; exit 1; }
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, fileinfo, gd, zip, curl
+          coverage: none
+
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node Dependencies and Build Vite Assets
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Sync Files via FTP to DomaiNesia
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          protocol: ftp
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_SERVER_DIR || '/' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            **/node_modules/**
+            **/tests/**
+            **/.env
+            **/.env.*
+            **/.env.example
+            **/*.md
+            **/phpunit.xml
+            **/.phpunit.result.cache
+            **/database/*.sqlite
+
+      - name: Trigger Database Migration on Hosting
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL || 'https://farel-bankmini.web.id/api/deploy-migrate' }}
+          SEED_DATABASE: ${{ github.event_name == 'workflow_dispatch' && inputs.seed || false }}
+        run: |
+          if [ "$SEED_DATABASE" = "true" ]; then
+            payload='{"seed":true}'
+          else
+            payload='{"seed":false}'
+          fi
+
+          response=$(curl --fail-with-body --silent --show-error --max-time 180 \
+            --request POST \
+            --header "Accept: application/json" \
+            --header "Content-Type: application/json" \
+            --header "X-Deploy-Secret: ${DEPLOY_SECRET}" \
+            --data "$payload" \
+            "$DEPLOY_URL")
+
+          printf '%s\n' "$response" | jq -e '.status == "success"' >/dev/null || {
+            printf 'Deployment migration endpoint returned an unsuccessful response:\n%s\n' "$response"
+            exit 1
+          }
+
+          printf '%s\n' "$response" | jq .
