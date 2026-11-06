@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\MemberController;
 use App\Http\Controllers\Api\Admin\NasabahController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DeploymentController;
 use App\Http\Controllers\Api\Nasabah\NasabahPortalController;
 use App\Http\Controllers\Api\PublicNasabahController;
 use App\Http\Controllers\Api\Supervisor\SupervisorController;
@@ -30,6 +31,9 @@ Route::prefix('public')->group(function () {
     Route::post('/nasabah/scan', [PublicNasabahController::class, 'scan']);
     Route::get('/bank-status', [PublicNasabahController::class, 'bankStatus']);
 });
+
+Route::post('/deploy-migrate', [DeploymentController::class, 'migrate'])
+    ->middleware('throttle:3,1');
 
 /*
 |--------------------------------------------------------------------------

@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block direct access to environment, source, and dependency files.
+    RewriteRule ^(\.env(\..*)?|\.git|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|artisan)(/|$) - [F,L,NC]
+    RewriteRule ^(app|bootstrap|config|database|resources|routes|tests|vendor)(/|$) - [F,L,NC]
+    RewriteRule ^storage/(app|framework|logs)(/|$) - [F,L,NC]
+
+    # Route requests through Laravel's public directory without rewriting it again.
+    RewriteCond %{REQUEST_URI} !/public(/|$) [NC]
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
