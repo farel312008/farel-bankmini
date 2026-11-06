@@ -1,0 +1,792 @@
+DOKUMENTASI ANALISIS ALUR WEBSITE BANK MINI SEKOLAH
+Tanggal pemeriksaan: 3 November 2026
+Ruang lingkup: source aplikasi Laravel pada folder ukk_paket_3
+
+Dokumentasi ini disusun dari route, controller, model, middleware, migration,
+seeder, halaman Blade, JavaScript frontend, konfigurasi, dan test yang tersedia.
+Istilah yang digunakan pada antarmuka adalah "Saver" untuk nasabah yang telah
+memiliki akun. Istilah "Member" digunakan untuk siswa yang telah dimasukkan
+ke daftar awal tetapi belum dipindahkan menjadi Saver.
+
+1. IDENTITAS DAN GAMBARAN UMUM WEBSITE
+
+1.1 Nama website
+
+Nama yang digunakan di antarmuka adalah Bank Mini Sekolah. Modul-modulnya
+memakai istilah E-Teller, Portal Pengelola Bank Mini, dan E-Passbook Nasabah.
+
+1.2 Tujuan dan fungsi utama
+
+Website mengelola kegiatan Bank Mini sekolah, terutama:
+- Pengelolaan daftar siswa/member, akun Saver, dan akun staf.
+- Aktivasi akun siswa menjadi Saver dengan nomor rekening.
+- Transaksi setoran dan penarikan melalui Teller.
+- Perhitungan saldo Saver dari riwayat transaksi.
+- Pengisian modal awal kas Teller dan penutupan kas harian.
+- Persetujuan penutupan kas oleh Supervisor.
+- Penolakan pengajuan kas yang tidak seimbang dengan alasan dan notifikasi ke
+  Teller.
+- Pencatatan jurnal akuntansi berpasangan untuk transaksi.
+- Laporan transaksi, audit jurnal, dan portal saldo/mutasi nasabah.
+- Profil publik Saver yang bisa dibuka melalui QR atau URL profil.
+- Pemulihan password/PIN melalui kode OTP email.
+
+1.3 Teknologi yang ditemukan
+
+- Backend: PHP minimal versi 8.3 dan Laravel versi 13.x sesuai composer.json.
+- Autentikasi API: Laravel Sanctum dengan personal access token.
+- Database: konfigurasi Laravel mendukung MySQL, MariaDB, SQLite, PostgreSQL,
+  dan SQL Server. Driver aktif ditentukan oleh DB_CONNECTION pada environment.
+- Frontend: JavaScript biasa pada public/js/app-bank.js; halaman tidak
+  menggunakan pemisahan komponen Blade per role.
+- Shell halaman: Blade pada resources/views/app.blade.php.
+- Antarmuka menggunakan Tailwind CDN, SweetAlert2, Font Awesome, html5-qrcode,
+  dan QRCode.js yang dimuat dari CDN eksternal.
+- Build tooling tersedia melalui Vite, Tailwind Vite plugin, npm, Composer,
+  dan PHPUnit. Shell Blade yang ditemukan memuat public/js/app-bank.js secara
+  langsung dengan asset(), bukan dengan directive @vite.
+
+1.4 Gambaran cara kerja
+
+Browser membuka route web Laravel yang mengembalikan shell Blade. JavaScript
+kemudian menentukan halaman berdasarkan token/role tersimpan di localStorage.
+Permintaan data dan operasi dikirim ke endpoint JSON di /api. Controller
+memvalidasi data dan hak akses, menjalankan query Eloquent/DB, lalu
+mengembalikan JSON. Frontend memperbarui tampilan dan memberi notifikasi.
+
+2. DAFTAR ROLE PENGGUNA
+
+2.1 Admin
+
+- Login menggunakan username dan password.
+- Router frontend mengarahkan Admin ke layout yang sama dengan Supervisor,
+  yaitu Views.SupervisorLayout; tidak ada dashboard Admin terpisah yang
+  digunakan oleh Router.
+- Dapat menggunakan endpoint kelompok /api/admin dan /api/supervisor.
+- Dapat mengelola member, membuat/aktivasi akun Saver, memperbarui status
+  akun Saver, mengelola akun staf, melihat laporan, menyetujui
+  penutupan kas, serta melihat audit jurnal.
+- Memiliki hak kelola Data Saver yang sama dengan Supervisor.
+
+2.2 Supervisor
+
+- Login menggunakan username dan password.
+- Menggunakan layout yang sama dengan Admin.
+- Dapat mengakses kelompok endpoint /api/admin serta /api/supervisor.
+- Dapat mengelola Member, membuat/aktivasi Saver, mengelola staf sesuai
+  batasan controller, mengelola kredensial/status dan penghapusan Saver,
+  melihat laporan transaksi, mengaudit jurnal, serta memproses penutupan kas.
+- Untuk pengelolaan Saver, Supervisor memiliki hak yang sama dengan Admin.
+
+2.3 Teller
+
+- Login menggunakan username dan password.
+- Setelah kredensial valid, frontend meminta status modal awal untuk tanggal
+  hari ini. Dialog modal awal harus dikonfirmasi sebelum dashboard dibuka.
+- Jika dialog dibatalkan, frontend meminta logout lalu menghapus token lokal.
+- Dapat mencari Saver/Member dengan QR kamera, foto QR, nomor rekening, atau
+  NIS; melakukan setoran/penarikan; meminta pemulihan PIN Saver melalui email;
+  membaca ringkasan kas; dan menyerahkan penutupan kas.
+- Modal awal ditampilkan sebagai informasi baca-saja di dashboard. Input modal
+  dilakukan melalui dialog login.
+- Endpoint Teller selalu mengikat modal awal ke user Teller yang sedang login.
+
+2.4 Nasabah / Saver
+
+- Login melalui username dan password; bukan melalui nomor rekening dan PIN
+  pada frontend web yang aktif.
+- Melihat saldo berjalan, saldo minimum mengendap, saldo yang dapat ditarik,
+  QR rekening jika ada, dan mutasi transaksi.
+- Tidak ada fungsi transaksi langsung oleh nasabah pada portal.
+- Akun yang dibuat nonaktif tidak dapat login dan aksesnya ditolak middleware.
+
+2.5 Member
+
+- Status ini mewakili data siswa yang belum diaktifkan menjadi Saver.
+- Pembuatan Member membuat baris User ber-role "member" dan baris Member.
+- Role "member" tidak dipetakan sebagai role dashboard oleh Router, dan login
+  utama tidak menerima role tersebut; Member harus diaktivasi menjadi Saver
+  terlebih dahulu untuk dapat login.
+
+3. STRUKTUR NAVIGASI WEBSITE
+
+3.1 Route halaman web
+
+- GET / : menampilkan resources/views/app.blade.php.
+- GET /profil/{identifier?} : menampilkan shell yang sama; JavaScript
+  mendeteksi path /profil/{identifier} dan memuat profil publik dari API.
+- GET /scan : menampilkan shell yang sama, tetapi tidak ditemukan halaman
+  khusus /scan pada Router JavaScript.
+- Fallback web : route tidak dikenal juga mengembalikan shell aplikasi.
+
+3.2 Navigasi berdasarkan role
+
+- Belum login: halaman Login.
+- Teller: area kerja loket dengan identifikasi Saver, tab Setoran Tunai,
+  Penarikan Tunai, dan Penutupan Kas Harian.
+- Admin/Supervisor: satu portal dengan tab Approval Penutupan Kas, Audit Jurnal,
+  Laporan Transaksi, Data Saver, Member, dan Akun Staf.
+- Nasabah: E-Passbook dengan kartu saldo dan daftar mutasi.
+- Profil publik: halaman profil baca-saja yang tidak memerlukan login.
+
+Views.AdminLayout dan handler tab Admin terdefinisi di JavaScript, tetapi
+Router saat ini tidak memilihnya. Karena itu tampilan Admin yang benar-benar
+dipakai adalah Views.SupervisorLayout.
+
+3.3 Endpoint API
+
+Semua endpoint berikut memakai prefix /api dari Laravel.
+
+Autentikasi dan pemulihan:
+- POST /api/auth/login
+- POST /api/auth/login-user
+- POST /api/auth/login-nasabah
+- GET /api/auth/me
+- POST /api/auth/logout
+- POST /api/auth/forgot-credential
+- POST /api/auth/reset-credential
+
+Publik:
+- GET /api/public/nasabah/{identifier}
+- POST /api/public/nasabah/scan
+
+Admin dan Supervisor melalui kelompok /api/admin:
+- GET, POST /api/admin/users
+- GET, PUT/PATCH, DELETE /api/admin/users/{id} terdaftar oleh apiResource.
+- GET, POST, GET detail, PUT/PATCH, DELETE /api/admin/members
+  dan /api/admin/members/{id}.
+- POST /api/admin/members/import
+- POST /api/admin/members/{id}/activate
+- GET /api/admin/savers dan /api/admin/nasabah
+- GET /api/admin/savers/{id}
+- POST /api/admin/savers/{id}/credentials
+- PATCH /api/admin/savers/{id}/status
+- DELETE /api/admin/savers/{id} (Admin/Supervisor; mengarsipkan Saver dan
+  mencabut akun login tanpa menghapus riwayat transaksi)
+- GET /api/admin/jurnal-akuntansi
+
+Teller melalui kelompok /api/teller:
+- GET, POST /api/teller/modal-awal
+- POST /api/teller/nasabah/scan
+- POST /api/teller/savers/{id}/forgot-pin
+- POST /api/teller/transaksi/setor
+- POST /api/teller/transaksi/tarik
+- GET /api/teller/penutupan-kas/summary-today
+- POST /api/teller/penutupan-kas/submit
+
+Supervisor melalui kelompok /api/supervisor:
+- GET /api/supervisor/laporan-transaksi
+- GET /api/supervisor/penutupan-kas
+- GET /api/supervisor/penutupan-kas/monthly?month={bulan}&year={tahun}
+- GET /api/supervisor/penutupan-kas/monthly-pdf?month={bulan}&year={tahun}
+- GET /api/supervisor/penutupan-kas/{id}/pdf
+- POST /api/supervisor/penutupan-kas/{id}/approve
+- POST /api/supervisor/penutupan-kas/{id}/reject
+- GET /api/supervisor/jurnal-akuntansi
+
+Nasabah melalui kelompok /api/nasabah:
+- GET /api/nasabah/saldo
+- GET /api/nasabah/mutasi
+
+Catatan route: GET /api/admin/users/{user} ikut terdaftar otomatis oleh
+apiResource, tetapi UserController tidak memiliki method show. Endpoint ini
+perlu diverifikasi karena pemanggilannya tidak memiliki implementasi controller
+yang ditemukan.
+
+4. ALUR SISTEM SECARA KESELURUHAN
+
+4.1 Membuka aplikasi
+
+1. Browser meminta route web; Laravel menyajikan app.blade.php.
+2. Script app-bank.js membaca token dan role dari localStorage.
+3. Jika tidak ada token, Login ditampilkan.
+4. Jika token ada, Router memilih dashboard sesuai role. Khusus Teller,
+   pengecekan modal awal dilakukan lebih dulu sebelum dashboard tampil.
+5. Untuk /profil/{identifier}, pemeriksaan path dilakukan sebelum autentikasi;
+   data profil diambil dari endpoint publik.
+
+4.2 Login
+
+1. Pengguna memasukkan username dan password.
+2. Frontend mengirim POST /api/auth/login.
+3. AuthController memvalidasi field, mencari User, dan memeriksa password hash.
+4. Untuk Nasabah, controller memeriksa akun aktif dan hubungan Saver, lalu
+   membuat token role nasabah.
+5. Untuk Admin, Teller, atau Supervisor, controller membuat token yang sesuai.
+   Token Admin diberi ability role:supervisor agar dapat menggunakan kelompok
+   akses pengelola.
+6. Frontend menyimpan token, role, dan profil pengguna di localStorage.
+7. Teller langsung diminta memasukkan/mengonfirmasi modal awal. Role lain
+   masuk ke halaman masing-masing.
+
+4.3 Proses operasional dan logout
+
+1. Pengguna memilih tab/fitur; JavaScript memanggil endpoint API.
+2. Backend menerapkan autentikasi Sanctum, middleware role, validasi input,
+   aturan proses, transaksi database bila diperlukan, dan mengembalikan JSON.
+3. Frontend menampilkan hasil, memperbarui daftar/saldo, dan pada transaksi
+   Teller menawarkan pencetakan struk.
+4. Logout memanggil POST /api/auth/logout, menghapus token aktif di database,
+   membersihkan localStorage, lalu kembali ke Login.
+
+5. ALUR KERJA BERDASARKAN ROLE
+
+5.1 Admin
+
+Halaman pertama adalah portal pengelola yang sama dengan Supervisor. Tab yang
+tersedia: Approval Penutupan Kas, Audit Jurnal, Laporan Transaksi, Data Saver,
+Member, dan Akun Staf.
+
+- Member: memuat daftar, pencarian, tambah/ubah/hapus, import spreadsheet, dan
+  aktivasi menjadi Saver.
+- Data Saver: melihat rekening, NIS, nama, kelas, kontak, status, dan saldo;
+  Admin dan Supervisor memiliki hak kelola yang sama untuk membuat kredensial
+  akun yang belum ada, mengaktifkan/menonaktifkan login, dan
+  mengarsipkan Saver. Akun login dan token dicabut, Saver disembunyikan dari
+  daftar aktif, tetapi data rekening dan transaksi tetap tersimpan. Riwayat
+  laporan transaksi tetap menampilkan nama dan nomor rekening Saver terarsip.
+- Akun Staf: melihat akun staf aktif, membuat Teller/Supervisor, dan menghapus
+  akun staf dari daftar aktif dengan mencabut token login. Data staf tetap
+  disimpan agar riwayat transaksi dan audit tidak terputus.
+- Approval: melihat semua laporan kas Teller dan menyetujui laporan berstatus
+  pending yang seimbang. Laporan pending yang tidak seimbang dapat ditolak
+  dengan alasan; Teller mendapat notifikasi saat membuka ringkasan kas.
+  Laporan berstatus approved menyediakan tombol untuk mengunduh PDF.
+- Laporan: melihat daftar setoran/penarikan serta totalnya.
+- Audit: melihat jurnal terbaru dan total debit/kredit.
+
+Hasil backend dikembalikan sebagai JSON dan dirender ke tabel/alert frontend.
+Terdapat ketidaksesuaian UI: setelah aktivasi Member, kode memilih fungsi
+switchAdminTab untuk Admin, sedangkan Router menampilkan layout Supervisor
+dengan ID tab spv-*. Perilaku navigasi pasca-aktivasi Admin perlu diverifikasi.
+
+5.2 Supervisor
+
+Menggunakan tab dan portal yang sama. Supervisor dapat memproses seluruh menu
+pengelola selain aksi Saver yang diberi batas role:admin. Persetujuan kas hanya dapat dilakukan jika selisih kas nol; penolakan hanya
+dapat dilakukan jika kas tidak seimbang dan wajib menyertakan alasan.
+Keduanya menyimpan id_supervisor sebagai petugas yang memproses laporan.
+Penolakan menyimpan alasan, memberi notifikasi di dashboard Teller, dan
+memungkinkan Teller mengajukan ulang penutupan untuk tanggal yang sama.
+Supervisor juga dapat menjalankan CRUD Member dan operasi akun staf melalui
+kelompok endpoint /api/admin yang izinnya mencakup supervisor.
+
+5.3 Teller
+
+1. Setelah login, sistem membaca modal awal hari ini.
+2. Dialog konfirmasi menampilkan nilai tersimpan jika sudah ada; Teller dapat
+   mengisi atau mengubah nominal lalu memilih Simpan & Masuk Dashboard.
+3. Setelah berhasil simpan, dashboard loket muncul.
+4. Teller mengidentifikasi Saver melalui QR kamera, gambar QR, atau pencarian.
+5. Teller memilih setoran atau penarikan. Setoran memerlukan Saver aktif;
+   penarikan juga meminta PIN enam digit.
+6. Untuk akhir hari, Teller melihat ringkasan kas, menghitung uang fisik,
+   mengisi catatan opsional, lalu menyerahkan laporan.
+
+Backend memakai id user dari token untuk mengikat transaksi, modal awal, dan
+penutupan kas ke Teller yang benar. Dashboard hanya menampilkan nominal modal
+awal sebagai informasi; inputnya tidak tersedia pada form setoran, penarikan,
+atau penutupan.
+
+5.4 Nasabah / Saver
+
+1. Login menggunakan username dan password.
+2. Frontend membuat portal E-Passbook, menampilkan data profil login, lalu
+   mengambil saldo dan mutasi dari dua endpoint terlindungi.
+3. Saldo tersedia dihitung dengan saldo berjalan dikurangi saldo mengendap
+   Rp 10.000, minimum nol.
+4. Bila memiliki rekening, QR ditampilkan. Nasabah bisa melakukan refresh
+   untuk memuat ulang saldo dan mutasi.
+5. Tidak ada endpoint setoran/penarikan mandiri untuk Nasabah.
+
+5.5 Member
+
+Member tidak memiliki alur dashboard/login yang dapat digunakan. Admin atau
+Supervisor mencatat data Member, kemudian membuat username, password, PIN, dan
+saldo awal pada saat aktivasi. Setelah aktivasi, data berpindah menjadi Saver
+dan akun login ber-role nasabah.
+
+6. ALUR KERJA SETIAP FITUR
+
+6.1 Login, sesi, dan logout
+
+- Tujuan: mengautentikasi pengguna dan memilih akses sesuai role.
+- Aktor: seluruh pengguna terdaftar.
+- Input: username dan password.
+- Urutan: frontend POST login; backend validasi, lookup User, verifikasi hash;
+  backend mengembalikan user dan token; frontend menyimpan token di
+  localStorage. Teller menjalani dialog modal awal setelah login.
+- Backend: AuthController.login; AuthController.logout; middleware
+  auth:sanctum dan RoleMiddleware untuk API terlindungi.
+- Tabel/model: users, personal_access_tokens; User dan Nasabah.
+- Berhasil: sesi aktif dan halaman berdasarkan role tampil.
+- Gagal: kredensial salah/akun Saver tidak aktif menghasilkan 401. API
+  terlindungi menolak token tidak valid atau kedaluwarsa. Logout menghapus
+  currentAccessToken.
+
+6.2 Pemulihan password dan PIN OTP
+
+- Tujuan: mengganti password akun atau PIN keamanan Saver.
+- Aktor: pengguna untuk password; Teller membantu memulai reset PIN Saver.
+- Input: email dan credential=password untuk permintaan password; id Saver
+  untuk permintaan PIN; OTP enam digit dan password/PIN baru pada reset.
+- Urutan: OTP acak dibuat, disimpan sebagai hash dengan masa berlaku 10 menit,
+  lalu dikirim melalui email. Pengguna memasukkan OTP dan nilai baru. OTP
+  dikunci saat pemeriksaan, dihapus setelah berhasil, gagal lima kali, atau
+  kedaluwarsa. Penggantian password juga menghapus semua token user.
+- Backend: AuthController.sendCredentialResetOtp,
+  sendSaverPinResetOtp, resetCredential.
+- Model/tabel: User, Nasabah, credential_reset_otps, mailer dan template email.
+- Berhasil: password/PIN diubah dan OTP tidak dapat dipakai ulang.
+- Gagal: validasi email/PIN, OTP salah/kedaluwarsa, lebih dari lima percobaan,
+  atau email Saver tidak terdaftar.
+- Batas yang ditemukan: pengiriman dibatasi satu permintaan per email per menit
+  dan maksimal lima per IP per menit.
+
+6.3 Profil publik dan pencarian QR
+
+- Tujuan: mencari profil Saver dari nomor rekening/NIS atau payload QR.
+- Aktor: siapa pun untuk profil publik; Teller untuk pencarian operasional.
+- Input: identifier URL, nomor rekening, atau NIS. Pemindaian Teller dapat
+  menggunakan kamera, foto, atau teks manual.
+- Urutan: JavaScript membaca payload QR; backend mengekstrak nomor rekening
+  dari URL/payload; mencari Saver; frontend menampilkan identitas, saldo,
+  saldo tersedia, jumlah transaksi, dan transaksi terbaru pada profil publik.
+  Pada Teller, endpoint scan juga dapat mengembalikan Member yang belum aktif.
+- Backend: PublicNasabahController.show/scan; TransaksiController.scanNasabah.
+- Tabel/model: savers, users, transaksi; Nasabah dan User. Pencarian Teller
+  juga menggunakan members/Member.
+- Berhasil: data profil ditampilkan atau identitas masuk ke form transaksi.
+- Gagal: identifier tidak ditemukan; akun Saver nonaktif ditolak pada endpoint
+  scan Teller.
+- Perlu verifikasi: profil publik mengisi status "Aktif & Terverifikasi"
+  sebagai teks tetap dan tidak memeriksa is_active sebelum menampilkan profil.
+  Route web /scan juga tidak memiliki layar scan khusus pada Router.
+
+6.4 Pengelolaan Member
+
+- Tujuan: menyiapkan daftar siswa sebelum akun tabungan dibuat.
+- Aktor: Admin dan Supervisor.
+- Input: NIS/student_number, nama, kelas, gender, tahun kelulusan, PIN enam
+  digit, email, dan nomor HP. Import menerima .xlsx atau .csv maksimal 5 MB.
+- Urutan CRUD: daftar Member dapat dicari berdasarkan NIS/nama/kelas; data
+  dapat dibuat, diedit, dan dihapus. Import mensyaratkan header
+  student_number, student_name, class, gender, graduation_year, security_pin;
+  email dan nomor_hp opsional. Maksimal 500 baris. Seluruh file divalidasi
+  sebelum disimpan sebagai satu transaksi; bila ada kesalahan/duplikasi,
+  seluruh import dibatalkan.
+- Aktivasi: Admin/Supervisor memasukkan username, password minimal 8 karakter,
+  PIN enam digit, dan saldo awal >= 0. Akun User berubah menjadi role nasabah,
+  Saver dibuat dengan rekening REC+tahun+urutan, data Member dihapus. Jika
+  saldo awal > 0, dibuat transaksi setoran pembukaan beserta dua jurnal.
+- Backend: MemberController.index/import/store/show/update/destroy/activate;
+  MemberSpreadsheetReader; SaverAccountNumberGenerator.
+- Tabel/model: users, members, savers, transaksi, jurnal_akuntansi.
+- Berhasil: Member tersimpan atau berpindah menjadi Saver dan kartu QR dapat
+  ditampilkan/dicetak.
+- Gagal: validasi/duplikasi NIS/email, file invalid, lebih dari 500 baris,
+  akun yang terhubung salah, atau proses transaksi DB gagal.
+- Keamanan PIN: PIN Member disimpan melalui cast hashed; data PIN disembunyikan
+  dari serialisasi model.
+
+6.5 Pengelolaan Saver dan akun login
+
+- Tujuan: memeriksa data pemegang rekening dan mengelola aksesnya.
+- Aktor: Admin dan Supervisor untuk daftar/detail dan seluruh aksi kelola
+  Saver.
+- Input: untuk membuat akun lama: username, email, password minimal 8
+  karakter, nomor HP opsional. Untuk status: boolean aktif/nonaktif.
+- Urutan: daftar memuat relasi user, status login, rekening, saldo hasil
+  perhitungan transaksi. Admin dapat membuat/menautkan akun User dan
+  menonaktifkan atau mengaktifkan akun. Penonaktifan
+  menghapus token aktif milik User.
+- Penghapusan dari daftar menggunakan soft delete/arsip. Akun user dan token
+  dicabut, tetapi row Saver dipertahankan agar foreign key transaksi dan
+  identitas pada riwayat transaksi tetap valid. Saver terarsip tidak dapat
+  login, dicari publik, atau muncul di daftar Saver aktif.
+- Backend: NasabahController.index/show/setCredentials/destroy;
+  MemberController.setSaverStatus.
+- Tabel/model: savers, users, transaksi.
+- Berhasil: kredensial/status Saver diperbarui atau Saver diarsipkan; daftar
+  aktif dimuat ulang, sedangkan transaksi lama tetap menampilkan identitasnya.
+- Gagal: Saver tidak ditemukan, akun login tidak ada/salah role, atau
+  username/email duplikat.
+
+6.6 Pengelolaan akun staf
+
+- Tujuan: mengelola user internal.
+- Aktor: Admin dan Supervisor.
+- Input: username, nama petugas, role teller/supervisor, password minimal
+  enam karakter untuk pembuatan.
+- Urutan: UI menampilkan daftar staf, membuat user, atau menghapus user.
+  Controller juga menyediakan update username/nama/role/password, namun
+  tombol edit tidak ditemukan pada UI.
+- Backend: UserController.index/store/update/destroy; route apiResource.
+- Tabel/model: users, personal_access_tokens.
+- Berhasil: staf dibuat/diubah/dihapus.
+- Gagal: username duplikat, validasi role/password, atau user memiliki
+  transaksi/penutupan kas yang mencegah penghapusan.
+- Perlu verifikasi: apiResource mendaftarkan GET detail user tetapi tidak
+  ditemukan method show pada UserController.
+
+6.7 Modal awal kas Teller
+
+- Tujuan: menetapkan uang awal di laci kas untuk satu Teller per tanggal.
+- Aktor: Teller yang sedang login.
+- Input: nominal bilangan bulat minimal Rp 0. Nilai nol secara teknis diterima.
+- Urutan: sesudah login, frontend GET /teller/modal-awal. Dialog menampilkan
+  nilai tersimpan bila ada. Tombol konfirmasi menjalankan POST dengan nominal.
+  Backend updateOrCreate berdasarkan id_teller dari token dan tanggal hari
+  ini. Dashboard baru dibuka setelah penyimpanan berhasil. Pembatalan
+  mengakhiri sesi.
+- Backend: PenutupanKasController.getModalAwal/setModalAwal.
+- Tabel/model: modal_awal_kas dan users/User.
+- Berhasil: satu baris modal per Teller per tanggal disimpan dan tampil sebagai
+  informasi baca-saja di dashboard.
+- Gagal: input tidak valid atau API gagal; dialog validasi mempertahankan
+  pengguna agar dapat mencoba kembali.
+- Batas: endpoint transaksi backend tidak memeriksa secara eksplisit bahwa
+  modal awal sudah ada. Pengeblokan akses dashboard ada pada frontend, sehingga
+  kewajiban modal awal tidak ditegakkan sebagai prasyarat server untuk setiap
+  panggilan API Teller.
+- Zona waktu: config/app.php menetapkan timezone UTC dan tanggal kas memakai
+  Carbon::today(). Perlu verifikasi apakah batas tanggal operasional yang
+  diinginkan mengikuti UTC atau waktu lokal sekolah.
+
+6.8 Transaksi setoran
+
+- Tujuan: menambah saldo Saver melalui penerimaan uang tunai.
+- Aktor: Teller.
+- Input: id Saver dan nominal minimal Rp 1.000; Saver dipilih melalui hasil
+  pencarian/scan.
+- Urutan: backend memeriksa apakah kas Teller sudah diserahkan; menolak Member
+  yang belum menjadi Saver; memvalidasi Saver dan nominal; mengunci baris Saver;
+  menolak akun nonaktif; bila nomor rekening kosong, generator dapat mengisi
+  nomor rekening; lalu membuat transaksi dan dua jurnal di DB transaction.
+  Frontend memperbarui saldo dan menawarkan cetak struk.
+- Backend: TransaksiController.setorTunai; SaverAccountNumberGenerator.
+- Tabel/model: savers, users, transaksi, jurnal_akuntansi.
+- Jurnal: debit akun 101 Kas dan kredit akun 201 Tabungan, masing-masing
+  sejumlah nominal setoran.
+- Berhasil: transaksi tersimpan, saldo Saver bertambah dari agregat transaksi,
+  struk dapat dicetak.
+- Gagal: kas telah ditutup, Member belum diaktivasi, akun nonaktif, validasi
+  gagal, atau proses DB gagal. Kegagalan transaksi di-rollback.
+- Tidak ditemukan endpoint untuk mengubah atau menghapus transaksi yang sudah
+  tercatat; jurnal transaksi juga tidak memiliki CRUD manual.
+
+6.9 Transaksi penarikan
+
+- Tujuan: mengurangi saldo Saver melalui pencairan uang.
+- Aktor: Teller dengan otorisasi PIN Saver.
+- Input: id Saver, nominal minimal Rp 1.000, PIN enam digit.
+- Urutan: backend memeriksa kas belum diserahkan, validasi input dan status
+  Saver, mencocokkan PIN hash, dan memastikan saldo setelah tarik tetap
+  minimal Rp 10.000. Setelah itu transaksi dan jurnal disimpan dalam
+  transaction database. Frontend memperbarui profil dan menawarkan struk.
+- Backend: TransaksiController.tarikTunai.
+- Tabel/model: savers, users, transaksi, jurnal_akuntansi.
+- Jurnal: debit akun 201 Tabungan dan kredit akun 101 Kas.
+- Berhasil: saldo Saver berkurang sesuai nominal.
+- Gagal: PIN salah, akun nonaktif, kas ditutup, nominal tidak valid, atau
+  saldo tidak mencukupi setelah mempertahankan saldo minimum Rp 10.000.
+
+6.10 Penutupan kas Teller dan persetujuan Supervisor
+
+- Tujuan: merekonsiliasi saldo sistem terhadap uang fisik dan menyerahkan
+  laporan kas kepada Supervisor.
+- Aktor: Teller menyerahkan; Admin/Supervisor menyetujui atau menolak.
+- Input Teller: uang fisik hasil hitung dan catatan opsional. Saldo awal
+  dikirim frontend sebagai informasi tetapi backend mengutamakan modal awal
+  yang tersimpan.
+- Urutan ringkasan: jumlah saldo awal + total setoran hari ini - total
+  penarikan hari ini = saldo akhir sistem. Jika penutupan berstatus pending
+  atau approved, ringkasan mengembalikan angka nol. Jika ditolak, saldo
+  ditampilkan kembali bersama alasan penolakan dan notifikasi untuk Teller.
+- Urutan submit: backend menolak pengajuan lain pada tanggal yang sama selama
+  status sebelumnya pending atau approved; setelah penolakan Teller boleh
+  mengajukan ulang hanya jika uang fisik sudah sama dengan saldo akhir sistem.
+  Dashboard membandingkan nominal secara langsung dan menonaktifkan tombol
+  serah ulang jika masih berbeda. Backend mengambil
+  transaksi Teller hari ini; menentukan saldo awal; menghitung
+  selisih = uang fisik - saldo akhir sistem; membuat penutupan berstatus
+  pending.
+- Persetujuan/penolakan: Supervisor hanya dapat menyetujui penutupan seimbang.
+  Penutupan tidak seimbang hanya dapat ditolak dengan alasan wajib. Status
+  akhir tersimpan sebagai approved/rejected beserta id_supervisor dan alasan
+  penolakan jika ada; laporan yang sudah diproses tidak dapat diproses ulang.
+- Unduh laporan: Admin/Supervisor dapat mengunduh PDF hanya untuk penutupan
+  approved. PDF berisi rincian teller, approver, tanggal, saldo, mutasi, uang
+  fisik, selisih, dan catatan teller.
+- Rekap bulanan: Admin/Supervisor memilih bulan dan tahun lalu mengunduh PDF
+  melalui endpoint monthly-pdf atau mencari rekap langsung melalui endpoint
+  monthly. Ringkasan pada website dan PDF menggunakan perhitungan transaksi
+  yang sama (jumlah transaksi/setoran/penarikan dan total nominal); PDF juga
+  memuat riwayat setiap transaksi pada bulan terpilih.
+- Backend: PenutupanKasController.ringkasanHariIni/submit;
+  SupervisorController.listPenutupanKas/approvePenutupanKas/rejectPenutupanKas.
+- Tabel/model: modal_awal_kas, transaksi, penutupan_kas, users.
+- Berhasil: penutupan tersimpan dan muncul di daftar Supervisor. Penolakan
+  menampilkan notifikasi pada dashboard Teller dan alasan pada ringkasan.
+  Teller dapat mengajukan ulang setelah jumlah uang fisik seimbang dengan
+  saldo akhir sistem.
+- Gagal: input invalid, penutupan tidak seimbang diajukan untuk approval,
+  penutupan seimbang diajukan untuk penolakan, atau laporan sudah diproses.
+- Perlu verifikasi: teks UI/API menyebut kas dipindahkan ke Brankas Utama,
+  tetapi source tidak menunjukkan tabel brankas atau transaksi pemindahan
+  aset; implementasi yang terlihat hanya mengubah status dan menyimpan id
+  Supervisor. Nilai status draft masih tercantum di migration awal, sedangkan
+  alur aktif menggunakan pending, approved, dan rejected.
+
+6.11 Laporan transaksi dan audit jurnal
+
+- Tujuan: pengawasan aktivitas dan pemeriksaan keseimbangan debit/kredit.
+- Aktor: Admin dan Supervisor.
+- Input: tidak ada input filter tanggal pada endpoint yang ditemukan.
+- Laporan: backend mengambil seluruh transaksi terbaru, memuat Teller/Saver,
+  memisahkan setor dan tarik, menjumlahkan nominal dan mengembalikan daftar.
+- Audit: backend mengambil maksimal 100 baris jurnal terbaru, menjumlahkan
+  seluruh debit serta kredit, lalu memberi indikator seimbang jika jumlah
+  total sama.
+- Backend: SupervisorController.laporanTransaksi/auditJurnal.
+- Tabel/model: transaksi, jurnal_akuntansi, savers, users.
+- Berhasil: frontend menampilkan ringkasan dan daftar. Tidak ada fungsi
+  pembuatan/edit/hapus jurnal terpisah; jurnal dibuat saat transaksi.
+- Perlu diketahui: laporan mengambil seluruh riwayat tanpa pagination/filter
+  pada controller yang ditemukan; audit hanya menampilkan 100 catatan terbaru
+  tetapi total debit/kredit menghitung seluruh tabel.
+
+6.12 Portal E-Passbook Saver
+
+- Tujuan: memberikan akses baca saldo dan mutasi.
+- Aktor: nasabah/Saver.
+- Input: token login.
+- Urutan: frontend meminta saldo lalu mutasi. Backend mengambil Saver melalui
+  user_id user login. Frontend menampilkan saldo berjalan, saldo minimum
+  Rp 10.000, saldo tersedia, dan transaksi terbaru dengan nama Teller.
+- Backend: NasabahPortalController.getSaldo/getMutasi.
+- Tabel/model: users, savers, transaksi.
+- Berhasil: saldo/mutasi tampil dan dapat dimuat ulang.
+- Gagal: akun tidak terhubung ke Saver atau token tidak valid; endpoint
+  mengembalikan kegagalan API.
+
+7. ALUR KOMUNIKASI SISTEM
+
+7.1 Frontend ke backend
+
+- apiCall membangun fetch ke API_BASE /api, mengirim Accept: application/json,
+  Content-Type JSON kecuali FormData, dan header Authorization berisi token
+  dari localStorage.
+- Request dapat berupa GET, POST, PUT, PATCH, DELETE; import spreadsheet
+  dikirim sebagai FormData.
+- Respons JSON dikembalikan ke pemanggil. Respons non-2xx dilempar sebagai
+  error agar ditampilkan melalui SweetAlert atau elemen status.
+- Jika endpoint terlindungi mengembalikan 401, frontend menampilkan pemberitahuan
+  sesi habis, membersihkan token lokal, lalu kembali ke halaman login.
+- Login, tampilan, modal, daftar, serta navigasi dirender pada sisi klien oleh
+  app-bank.js. Blade hanya menyediakan shell dan elemen print-area.
+
+7.2 Backend ke database
+
+- Route mengarahkan request ke controller.
+- Middleware autentikasi/role berjalan sebelum controller untuk endpoint
+  terlindungi.
+- Controller memvalidasi input, membaca user dari token, menggunakan model
+  Eloquent/query builder, dan membungkus operasi yang harus atomik dengan
+  DB::transaction atau transaksi manual.
+- Model casts menangani nominal, tanggal, password/PIN hash, dan relasi.
+- Controller membentuk respons JSON success/message/data, atau status HTTP
+  seperti 401, 403, 404, 409, 422, 500.
+
+7.3 Hasil ke pengguna
+
+- Frontend mengisi tabel, kartu saldo, ringkasan, profil Saver, atau status
+  penutupan dari data JSON.
+- SweetAlert dipakai untuk konfirmasi, kesalahan, hasil login, dan hasil
+  transaksi.
+- Cetak struk/kartu dan unduh QR berlangsung di browser.
+
+8. ALUR DATABASE
+
+8.1 Tabel operasional utama
+
+- users: akun staf, akun Saver, username, password hash, role, nama petugas,
+  email, status aktif, dan timestamps. User adalah identitas login utama.
+- savers: identitas pemilik tabungan, user_id opsional/unik, no_rekening,
+  NIS, nama, jenis kelamin, kelas, PIN hash, email, nomor HP. Model Nasabah
+  memetakan tabel ini dengan nama kelas lama.
+- members: data calon Saver, user_id sebagai primary key sekaligus FK users,
+  student_number, student_name, class, gender, graduation_year, security PIN,
+  status, email, nomor HP. User member memiliki relasi satu-ke-satu.
+- transaksi: id Saver, id Teller/user, waktu, jenis setor/tarik, nominal.
+  Foreign key menjaga relasi ke data Saver yang diarsipkan; transaksi tetap
+  dapat menampilkan identitas Saver lama untuk audit.
+- jurnal_akuntansi: baris jurnal terkait satu transaksi, kode akun, posisi
+  debit/kredit, dan jumlah. Foreign key mencegah penghapusan transaksi yang
+  masih memiliki jurnal.
+- modal_awal_kas: id Teller, tanggal, nominal. Unik pada pasangan
+  id_teller+tanggal.
+- penutupan_kas: Teller, Supervisor opsional, tanggal, saldo awal, setoran,
+  penarikan, saldo sistem, uang fisik, selisih, status, catatan.
+- credential_reset_otps: user, jenis credential, hash OTP, expiry, jumlah
+  percobaan. Unik per pasangan user_id+credential dan terhapus saat user
+  dihapus.
+
+8.2 Relasi utama
+
+- User mempunyai satu Saver atau satu Member; Saver/Member menyimpan user_id.
+- Saver mempunyai banyak transaksi.
+- User/Teller mempunyai banyak transaksi.
+- Transaksi mempunyai banyak jurnal; satu jurnal milik satu transaksi.
+- User/Teller memiliki banyak penutupan sebagai Teller; User/Supervisor dapat
+  tercatat pada banyak penutupan sebagai approver.
+- User/Teller memiliki banyak modal awal berdasarkan tanggal.
+- User memiliki banyak token Sanctum dan catatan OTP.
+
+8.3 Perhitungan saldo dan jurnal
+
+- Tidak ditemukan kolom saldo tersimpan pada migration savers. Saldo model
+  dihitung dari jumlah transaksi setor dikurangi jumlah transaksi tarik.
+- Batas saldo mengendap Rp 10.000 digunakan untuk menghitung saldo tersedia
+  dan memvalidasi penarikan.
+- Setoran membuat pasangan jurnal debit 101/kredit 201.
+- Penarikan membuat pasangan jurnal debit 201/kredit 101.
+- Saldo awal kas Teller disimpan terpisah di modal_awal_kas; tidak dimasukkan
+  sebagai transaksi rekening Saver.
+
+8.4 Tabel pendukung Laravel
+
+- personal_access_tokens: token autentikasi Sanctum.
+- credential_reset_otps: OTP pemulihan akun.
+- password_reset_tokens, sessions, cache, cache_locks, jobs, job_batches,
+  failed_jobs: tabel dukungan framework yang disediakan migration.
+- DatabaseSeeder membuat akun demo dan data contoh. Seeder memakai User::create,
+  sehingga perlu diperhatikan bila dijalankan ulang pada database yang telah
+  berisi username yang sama.
+
+8.5 Catatan evolusi skema
+
+- Migration awal membuat users dan tabel transaksi/data terkait.
+- Migration penamaan Saver dapat mengganti tabel nasabah lama menjadi savers,
+  menambahkan user_id, dan membuat members.
+- Migration berikutnya menambahkan status aktif, jenis kelamin, email, nomor
+  HP, dan tabel modal awal/OTP.
+- Nama file migration awal masih memuat istilah nasabah, tetapi model aktif
+  Nasabah menyimpan data pada tabel savers.
+
+9. ALUR KEAMANAN SISTEM
+
+9.1 Autentikasi
+
+- Password user diverifikasi menggunakan Hash::check. Password disimpan
+  melalui hashing Laravel.
+- Login menghasilkan token Sanctum; frontend menyimpan token pada localStorage.
+- Endpoint web API terlindungi oleh auth:sanctum.
+- Logout menghapus token akses aktif dari personal_access_tokens.
+- Reset password menghapus token-token milik user agar sesi lama tidak terus
+  berlaku.
+
+9.2 Otorisasi role
+
+- RoleMiddleware memeriksa user dari request dan membandingkan role terhadap
+  role yang diminta route.
+- Token tidak valid/tidak ada menghasilkan 401; role tidak cocok menghasilkan
+  403.
+- Nasabah nonaktif ditolak middleware dan juga diperiksa pada login.
+- Pengecekan is_active pada login ditemukan untuk Nasabah. Login staff tidak
+  menunjukkan pemeriksaan is_active yang sama; pengelolaan status aktif staff
+  perlu diverifikasi.
+- Admin dan Supervisor memiliki akses pengelolaan Saver yang sama, termasuk
+  membuat login, mengubah status, dan mengarsipkan Saver tanpa menghapus
+  riwayat transaksi.
+- Kelompok admin menerima role admin dan supervisor; kelompok Teller hanya
+  teller; kelompok supervisor menerima admin dan supervisor; portal nasabah
+  hanya nasabah.
+- Endpoint pengelolaan Saver berada di dalam kelompok role admin/supervisor.
+
+9.3 Validasi dan batas operasional
+
+- Input controller menggunakan validasi Laravel untuk field wajib, tipe,
+  panjang, keunikan, nominal minimum, dan format PIN.
+- Setoran/penarikan memakai transaksi database agar transaksi dan jurnal
+  tersimpan konsisten.
+- Penghapusan user staf dibatasi bila memiliki transaksi atau penutupan kas;
+  foreign key juga melindungi relasi audit.
+- Nominal transaksi dan jurnal menggunakan bilangan bulat Rupiah.
+- Penarikan tidak boleh mengurangi saldo hingga di bawah Rp 10.000.
+- OTP disimpan dalam bentuk hash, berlaku 10 menit, satu kali pakai, dan
+  dibatasi lima percobaan verifikasi.
+
+9.4 Batas yang perlu diperhatikan
+
+- Login endpoint tidak menunjukkan rate limit/lockout; rate limiter yang
+  ditemukan berlaku untuk pengiriman OTP.
+- Penonaktifan akun yang tersedia di UI berlaku untuk Saver. Tidak ditemukan
+  alur pengelolaan status aktif staff.
+- Input modal awal dijaga oleh alur frontend, tetapi endpoint transaksi tidak
+  mensyaratkan keberadaan modal awal di server.
+- Role middleware memeriksa role user; kemampuan token Sanctum dibuat saat
+  login tetapi tidak terlihat digunakan sebagai pemeriksaan abilities khusus.
+- APP timezone yang ditemukan adalah UTC. Operasi "hari ini" untuk modal,
+  laporan kas, dan penutupan menggunakan tanggal aplikasi; kesesuaian dengan
+  zona waktu operasional perlu diverifikasi.
+- Kode pemulihan akun bergantung pada konfigurasi mail server di environment.
+- Library antarmuka/QR kamera dimuat dari CDN dan membutuhkan ketersediaan
+  jaringan; kamera memerlukan HTTPS atau localhost sesuai pemeriksaan frontend.
+
+10. RANGKUMAN ALUR WEBSITE
+
+1. Pengguna membuka website; Laravel menyajikan shell Blade.
+2. Pengguna login dengan username dan password; backend memeriksa hash,
+   status, role, dan mengeluarkan token Sanctum.
+3. Frontend menyimpan token/profil dan memilih tampilan sesuai role.
+4. Teller mengisi/mengonfirmasi modal awal melalui dialog login; sistem
+   menyimpan satu nominal untuk Teller dan tanggal hari itu sebelum dashboard
+   ditampilkan.
+5. Admin/Supervisor menyiapkan Member, membuat akun, serta mengaktifkan
+   Saver. Sistem menghubungkan akun User dan data Saver, lalu menghasilkan
+   nomor rekening dan QR.
+6. Teller mencari Saver, melakukan setoran atau penarikan. Backend mencatat
+   transaksi dan jurnal berpasangan; saldo dihitung dari agregat transaksi.
+7. Nasabah melihat saldo dan mutasi melalui E-Passbook; profil publik dapat
+   dibuka melalui QR/URL.
+8. Di akhir operasional, Teller mencocokkan saldo sistem dengan uang fisik
+   dan menyerahkan penutupan berstatus pending.
+9. Supervisor memeriksa dan menyetujui penutupan. Sistem menyimpan status
+   approved dan identitas approver.
+10. Admin/Supervisor memeriksa laporan dan audit jurnal, lalu pengguna logout
+    untuk mencabut token aktif.
+
+CATATAN IMPLEMENTASI YANG PERLU VERIFIKASI
+
+- Route GET detail akun staf terdaftar melalui apiResource, tetapi
+  UserController.show tidak ditemukan.
+- Layout Admin terdefinisi tetapi Router menggunakan layout Supervisor untuk
+  role admin dan supervisor. Navigasi pasca-aktivasi Member untuk Admin
+  memanggil ID elemen layout Admin yang tidak ada pada layout tersebut.
+- Login yang digunakan frontend adalah endpoint gabungan /api/auth/login.
+  Endpoint lama /api/auth/login-user dan /api/auth/login-nasabah masih
+  terdaftar. Komentar loginNasabah menyebut NIS/nomor rekening dan PIN, tetapi
+  implementasinya mencari username dan memeriksa password.
+- File app/Http/Controllers/Api/login.php berisi contoh login statis, tetapi
+  bukan controller Laravel yang terdaftar pada route. Jangan menganggapnya
+  sebagai alur login website aktif.
+- Halaman /scan tidak mempunyai screen khusus pada Router.
+- Status profil publik ditetapkan sebagai string tetap; pemeriksaan akun
+  nonaktif ditemukan pada scan Teller dan login, bukan pada show profil publik.
+- Penutupan kas menyebut pemindahan ke brankas, tetapi tidak ditemukan tabel
+  brankas atau pembukuan perpindahan pada source yang diperiksa.
+- Syarat modal awal belum diperiksa pada backend transaksi; direct request API
+  Teller berpotensi melewati gate dashboard.
+- Zona waktu operasional memakai UTC dari konfigurasi saat pemeriksaan.
+- UserFactory mengikuti field default Laravel (name/email_verified_at) yang
+  tidak tampak pada migration users saat ini; kesesuaiannya perlu diverifikasi
+  bila factory tersebut digunakan.
+
+TEST YANG DITEMUKAN
+
+Test mencakup login terpadu, login Saver, pemulihan password/PIN OTP, import
+Member, aktivasi Member ke Saver, pencarian Member, status Saver, laporan
+transaksi Supervisor, dan konfigurasi CORS untuk aplikasi mobile. Keberadaan
+test pada satu area tidak berarti seluruh variasi UI/API, seperti pemeriksaan
+modal awal sebelum transaksi atau endpoint detail akun staf, sudah dicakup.
