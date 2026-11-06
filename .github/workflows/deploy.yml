@@ -36,10 +36,12 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
+          echo "Checking FTP_SERVER value..."
           test -n "$FTP_SERVER" || { echo "FTP_SERVER is required."; exit 1; }
           test -n "$FTP_USERNAME" || { echo "FTP_USERNAME is required."; exit 1; }
           test -n "$FTP_PASSWORD" || { echo "FTP_PASSWORD is required."; exit 1; }
           test -n "$DEPLOY_SECRET" || { echo "DEPLOY_SECRET is required."; exit 1; }
+          echo "All secrets are present."
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
