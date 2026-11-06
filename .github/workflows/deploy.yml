@@ -65,11 +65,16 @@ jobs:
 
       - name: Sync Files via FTP to DomaiNesia
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT || 21 }}
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ env.FTP_USERNAME }}
+          password: ${{ env.FTP_PASSWORD }}
+          port: ${{ env.FTP_PORT || 21 }}
           protocol: ftp
           local-dir: ./
           server-dir: ${{ secrets.FTP_SERVER_DIR || '/' }}
