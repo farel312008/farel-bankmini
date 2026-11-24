@@ -17,13 +17,32 @@ class PenutupanKasController extends Controller
         $modal = ModalAwalKas::where('id_teller', $request->user()->id)
             ->whereDate('tanggal', Carbon::today())
             ->first();
+        $supportsServiceStatus = ModalAwalKas::supportsServiceStatus();
+        $transaksiHariIni = Transaksi::where('id_user', $request->user()->id)
+            ->whereDate('tanggal', Carbon::today());
+        $totalSetoran = (int) (clone $transaksiHariIni)
+            ->where('jenis_trans', 'setor')
+            ->sum('nominal');
+        $totalPenarikan = (int) (clone $transaksiHariIni)
+            ->where('jenis_trans', 'tarik')
+            ->sum('nominal');
+        $kasSudahDiserahkan = $this->hasSubmittedCashClosure($request);
+        $sisaModal = $modal ? max(0, (int) $modal->nominal + $totalSetoran - $totalPenarikan) : 0;
+        if ($kasSudahDiserahkan) {
+            $sisaModal = 0;
+        }
 
         return response()->json([
             'success' => true,
             'data' => [
                 'tanggal' => Carbon::today()->toDateString(),
                 'nominal' => (int) ($modal?->nominal ?? 0),
+                'total_setoran' => $totalSetoran,
+                'sisa_modal' => $sisaModal,
+                'total_penarikan' => $totalPenarikan,
                 'sudah_diatur' => (bool) $modal,
+                'status_layanan' => $this->serviceStatus($request),
+                'supports_service_status' => $supportsServiceStatus,
             ],
         ]);
     }
@@ -34,16 +53,111 @@ class PenutupanKasController extends Controller
             'nominal' => 'required|integer|min:0',
         ]);
 
-        $modal = ModalAwalKas::updateOrCreate(
+        if ($this->hasSubmittedCashClosure($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kas hari ini sudah ditutup dan diserahkan. Modal awal tidak dapat diubah.',
+            ], 422);
+        }
+
+        $defaults = ['nominal' => $validated['nominal']];
+        if (ModalAwalKas::supportsServiceStatus()) {
+            $defaults['status_layanan'] = 'open';
+        }
+
+        $modal = ModalAwalKas::firstOrCreate(
             ['id_teller' => $request->user()->id, 'tanggal' => Carbon::today()],
-            ['nominal' => $validated['nominal']]
+            $defaults
         );
+        if (! $modal->wasRecentlyCreated) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Modal awal hari ini sudah tersimpan. Gunakan tombol layanan untuk mengatur status teller.',
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Modal awal kas berhasil disimpan.',
-            'data' => $modal,
+            'message' => 'Modal awal kas tersimpan dan layanan teller berhasil dibuka.',
+            'data' => [
+                'tanggal' => $modal->tanggal->toDateString(),
+                'nominal' => (int) $modal->nominal,
+                'total_setoran' => 0,
+                'sisa_modal' => (int) $modal->nominal,
+                'total_penarikan' => 0,
+                'sudah_diatur' => true,
+                'status_layanan' => 'open',
+            ],
         ]);
+    }
+
+    public function setServiceStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:open,resting',
+        ]);
+        if (! ModalAwalKas::supportsServiceStatus()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Fitur status istirahat belum tersedia. Perbarui struktur database melalui migration terbaru.',
+            ], 503);
+        }
+
+        if ($this->hasSubmittedCashClosure($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kas hari ini sudah ditutup dan diserahkan. Layanan tidak dapat dibuka kembali.',
+            ], 422);
+        }
+
+        $modal = ModalAwalKas::where('id_teller', $request->user()->id)
+            ->whereDate('tanggal', Carbon::today())
+            ->first();
+
+        if (! $modal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Isi modal awal terlebih dahulu sebelum membuka layanan.',
+            ], 422);
+        }
+
+        $modal->status_layanan = $validated['status'];
+        $modal->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $validated['status'] === 'resting'
+                ? 'Layanan teller dijeda untuk istirahat.'
+                : 'Layanan teller kembali dibuka.',
+            'data' => ['status_layanan' => $modal->status_layanan],
+        ]);
+    }
+
+    private function serviceStatus(Request $request): string
+    {
+        if ($this->hasSubmittedCashClosure($request)) {
+            return 'closed';
+        }
+
+        $modal = ModalAwalKas::where('id_teller', $request->user()->id)
+            ->whereDate('tanggal', Carbon::today())
+            ->first();
+
+        if (! $modal) {
+            return 'not_started';
+        }
+
+        return ModalAwalKas::supportsServiceStatus()
+            ? $modal->status_layanan
+            : 'open';
+    }
+
+    private function hasSubmittedCashClosure(Request $request): bool
+    {
+        return PenutupanKas::where('id_teller', $request->user()->id)
+            ->whereDate('tanggal_penutupan', Carbon::today())
+            ->whereIn('status', ['pending', 'approved'])
+            ->exists();
     }
 
     /**
@@ -154,6 +268,16 @@ class PenutupanKasController extends Controller
 
         $teller = $request->user();
         $hariIni = Carbon::today();
+        $modalHariIni = ModalAwalKas::where('id_teller', $teller->id)
+            ->whereDate('tanggal', $hariIni)
+            ->first();
+
+        if (! $modalHariIni) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Isi modal awal kas sebelum mengajukan penutupan.',
+            ], 422);
+        }
 
         $penutupanTerakhir = PenutupanKas::where('id_teller', $teller->id)
             ->whereDate('tanggal_penutupan', $hariIni)

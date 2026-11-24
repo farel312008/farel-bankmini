@@ -1,14 +1,53 @@
 /**
  * ============================================================================
  * E-TELLER BANK MINI SEKOLAH - CORE FRONTEND JAVASCRIPT ENGINE
+ * SMK NEGERI 1 BANTUL - UJI KOMPETENSI KEAHLIAN RPL
+ * ============================================================================
+ * PANDUAN PENCARIAN KODE CEPAT (Tekan Ctrl + F lalu ketik kata kunci):
+ * ----------------------------------------------------------------------------
+ * 1.  FITUR_AUTH_CLIENT              : Manajemen Token Sanctum & apiCall()
+ * 2.  FITUR_HELPER_FORMATTER         : Format Rupiah & Tanggal
+ * 3.  FITUR_ROUTER_NAVIGASI          : Router & Penentuan Tampilan Role
+ * 4.  FITUR_VIEW_PUBLIC_PROFILE      : View Profil Publik QR Nasabah (/profil)
+ * 5.  FITUR_VIEW_LANDING_PAGE        : View Halaman Depan / Beranda Bank Mini
+ * 6.  FITUR_VIEW_LOGIN               : View Form Login & Dialog Pemulihan
+ * 7.  FITUR_HANDLE_LOGIN             : Handler Submit Login Pengguna
+ * 8.  FITUR_LUPA_PASSWORD_PIN_OTP    : Handler Reset Password & PIN via OTP Email
+ * 9.  FITUR_LOGOUT                   : Handler Keluar / Selesai Sesi
+ * 10. FITUR_ADMIN_LAYOUT             : View Portal Master Data Administrator
+ * 11. FITUR_DATA_SAVER               : Kelola Data Saver, Status Aktif & Soft Delete
+ * 12. FITUR_DATA_MEMBER_IMPORT       : Kelola Member, Upload Excel & Naik Kelas
+ * 13. FITUR_KELOLA_STAF              : Kelola Pengguna Staf (Teller & Supervisor)
+ * 14. FITUR_KARTU_DIGITAL_QR         : Preview Kartu Siswa & Download File QR
+ * 15. FITUR_TELLER_LAYOUT            : View Utama Loket Kas Piket Teller
+ * 16. FITUR_TELLER_NAVIGASI          : State Loket, Modal Awal, & Tab Teller
+ * 17. FITUR_TELLER_CARI_NASABAH      : Pencarian Cepat Member & Nasabah Saver
+ * 18. FITUR_TELLER_SCAN_QR_KAMERA    : Pemindai Kamera Webcam & Upload Gambar QR
+ * 19. FITUR_TELLER_PROFIL_NASABAH    : Kartu Info Saldo & Batas Tarik di Loket
+ * 20. FITUR_TELLER_TRANSAKSI_SETOR_TARIK : Eksekusi Setor Tunai & Tarik Tunai
+ * 21. FITUR_TELLER_CLOSING_KAS       : Rekonsiliasi & Submit Penutupan Kas Harian
+ * 22. FITUR_TELLER_CETAK_STRUK       : Struk Transaksi & Format Cetak Termal
+ * 23. FITUR_SUPERVISOR_LAYOUT        : View Portal Pengawas Bank Mini
+ * 24. FITUR_SUPERVISOR_NAVIGASI      : Navigasi Tab Approval, Audit & Laporan
+ * 25. FITUR_SUPERVISOR_LAPORAN       : Laporan Rekap Mutasi Setor & Tarik
+ * 26. FITUR_SUPERVISOR_APPROVAL_REJEKSI_KAS : Approval Kas & Download PDF
+ * 27. FITUR_SUPERVISOR_AUDIT_JURNAL  : Audit Buku Besar Jurnal (101 vs 201)
+ * 28. FITUR_NASABAH_LAYOUT           : View Portal Buku Tabungan Digital (E-Passbook)
+ * 29. FITUR_NASABAH_MUTASI_PORTAL    : Riwayat Mutasi 30 Hari & Cetak Buku Siswa
+ * 30. FITUR_NASABAH_GANTI_PASSWORD_PIN: Form Ubah Password & PIN Mandiri Siswa
+ * 31. FITUR_INIT_APLIKASI            : Inisialisasi DOM Ready & Boot Router
  * ============================================================================
  */
 
 const API_BASE = '/api';
+let spvLaporanNasabahList = [];
 
-// ----------------------------------------------------------------------------
-// 1. STATE & STORAGE MANAGEMENT
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 01] MANAJEMEN SESI & CLIENT API
+// - Deskripsi : Mengatur penyimpanan token Sanctum, data login user di localStorage,
+//               serta fungsi apiCall() untuk komunikasi HTTP ke backend Laravel.
+// - Cari Cepat: FITUR_AUTH_CLIENT
+// ============================================================================
 const Auth = {
     getToken: () => localStorage.getItem('bm_token'),
     getRole: () => localStorage.getItem('bm_role'),
@@ -78,9 +117,11 @@ async function apiCall(endpoint, method = 'GET', data = null) {
     }
 }
 
-// ----------------------------------------------------------------------------
-// 3. FORMATTER UTILITIES
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 02] FORMATTER & HELPER
+// - Deskripsi : Fungsi bantuan format mata uang Rupiah (IDR) dan format tanggal/waktu.
+// - Cari Cepat: FITUR_HELPER_FORMATTER
+// ============================================================================
 function formatRupiah(number) {
     return new Intl.NumberFormat('id-ID', {
         style: 'currency',
@@ -100,9 +141,13 @@ function formatDate(dateString) {
         minute: '2-digit'
     });
 }
-// ----------------------------------------------------------------------------
-// 4. ROUTER & PAGE RENDERER
-// ----------------------------------------------------------------------------
+
+// ============================================================================
+// [FITUR 03] ROUTER & NAVIGASI ROLE
+// - Deskripsi : Mengatur penentuan halaman berdasarkan status login dan role
+//               (Teller, Admin/Supervisor, Nasabah, Landing Page, Profil Publik).
+// - Cari Cepat: FITUR_ROUTER_NAVIGASI
+// ============================================================================
 const Router = {
     render: () => {
         const app = document.getElementById('app');
@@ -166,6 +211,14 @@ function memberImportPanel() {
             <button onclick="downloadMemberImportTemplate()" class="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline">
                 Unduh template Excel/CSV
             </button>
+            <div class="flex flex-wrap justify-end gap-2">
+                <button type="button" onclick="promoteMembersByGraduationYear()" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">
+                    <i class="fa-solid fa-arrow-up mr-1"></i> Naik Kelas
+                </button>
+                <button type="button" onclick="reclassifyMember()" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100">
+                    <i class="fa-solid fa-user-pen mr-1"></i> Tidak Naik Kelas
+                </button>
+            </div>
             <p class="max-w-xl text-right text-[10px] text-slate-500">
                 Kolom: nis, nama_siswa, kelas (opsional), angkatan_keluar, nomor_hp, gender.
                 Gender wajib diisi: Laki-laki/Perempuan, L/P, atau Pria/Wanita. NIS sebaiknya diformat sebagai teks.
@@ -175,9 +228,12 @@ function memberImportPanel() {
     `;
 }
 
-// ----------------------------------------------------------------------------
-// 5. VIEW: LOGIN PORTAL
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 04] VIEW: PROFIL PUBLIK NASABAH (Scan QR dari Luar)
+// - Deskripsi : Halaman baca-saja profil nasabah saat QR code dipindai oleh umum/siswa
+//               melalui URL /profil/{no_rekening}.
+// - Cari Cepat: FITUR_VIEW_PUBLIC_PROFILE
+// ============================================================================
 const Views = {
     TellerLoading: () => `
         <main class="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -226,114 +282,374 @@ const Views = {
 
     PublicProfileError: (message) => `<main class="min-h-screen flex items-center justify-center bg-slate-100 p-4"><div class="w-full max-w-md bg-white rounded-2xl border border-red-200 shadow-xl p-8 text-center"><i class="fa-solid fa-triangle-exclamation text-4xl text-red-500 mb-3"></i><h1 class="font-bold text-slate-800">Profil tidak ditemukan</h1><p class="text-sm text-slate-500 mt-2">${message}</p></div></main>`,
 
+    // ========================================================================
+    // [FITUR 05] VIEW: LANDING PAGE PUBLIK (Beranda Bank Mini)
+    // - Deskripsi : Halaman beranda utama dengan Hero Section, Tentang,
+    //               Keunggulan 01-04, Alur Transaksi 1-4, Layanan Tabungan,
+    //               Jadwal Loket, FAQ, dan Footer resmi SMK Negeri 1 Bantul.
+    // - Cari Cepat: FITUR_VIEW_LANDING_PAGE
+    // ========================================================================
     PublicLanding: () => `
-        <div class="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-green-50">
-            <header class="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-                <a href="/login" class="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-extrabold text-white shadow-lg shadow-emerald-900/10 transition hover:bg-emerald-800 sm:text-sm">
-                    <i class="fa-solid fa-user-tie"></i>
-                    Login sebagai Pegawai
-                </a>
-                <div class="flex items-center gap-2.5">
-                    <img src="/images/logo-smkn1-bantul.png" alt="Logo SMK Negeri 1 Bantul" class="h-10 w-10 rounded-xl border border-emerald-100 bg-white object-contain p-1">
-                    <div class="hidden text-right sm:block">
-                        <p class="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">Bank Mini Sekolah</p>
-                        <p class="text-xs font-extrabold text-slate-800">SMK Negeri 1 Bantul</p>
-                    </div>
+        <div class="min-h-screen bg-slate-50 flex flex-col">
+            <!-- STICKY TOP NAVBAR -->
+            <header class="sticky top-0 z-50 border-b border-emerald-100/70 bg-white/95 backdrop-blur-md shadow-xs">
+                <div class="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+                    <a href="/" class="flex items-center gap-2.5 group">
+                        <img src="/images/logo-smkn1-bantul.png" alt="Logo SMK Negeri 1 Bantul" class="h-10 w-10 rounded-xl border border-emerald-100 bg-white object-contain p-1 shadow-xs transition group-hover:scale-105">
+                        <div class="text-left">
+                            <p class="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">Bank Mini Sekolah</p>
+                            <p class="text-xs font-extrabold text-slate-800">SMK Negeri 1 Bantul</p>
+                        </div>
+                    </a>
+
+                    <nav class="hidden lg:flex items-center gap-6 text-xs font-bold text-slate-600">
+                        <a href="#tentang" class="transition hover:text-emerald-700">Tentang</a>
+                        <a href="#keunggulan" class="transition hover:text-emerald-700">Keunggulan</a>
+                        <a href="#alur" class="transition hover:text-emerald-700">Alur Menabung</a>
+                        <a href="#layanan" class="transition hover:text-emerald-700">Layanan</a>
+                        <a href="#jadwal" class="transition hover:text-emerald-700">Jadwal Loket</a>
+                        <a href="#faq" class="transition hover:text-emerald-700">FAQ</a>
+                    </nav>
+
+                    <a href="/login" class="inline-flex items-center rounded-xl bg-emerald-700 px-4 py-2 text-xs font-extrabold text-white shadow-md shadow-emerald-900/10 transition hover:bg-emerald-800 sm:text-sm">
+                        Login
+                    </a>
                 </div>
             </header>
 
-            <main>
-                <section class="mx-auto grid max-w-7xl items-center gap-10 px-4 pb-14 pt-10 sm:px-6 md:pt-16 lg:grid-cols-2 lg:px-8 lg:pb-20">
-                    <div class="text-center lg:text-left">
-                        <span class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-800 shadow-sm">
-                            <i class="fa-solid fa-shield-halved"></i> Layanan keuangan sekolah digital
-                        </span>
-                        <h1 class="mt-5 text-4xl font-black leading-tight tracking-tight text-slate-900 sm:text-5xl">
+            <main class="flex-1">
+                <!-- HERO SECTION -->
+                <section class="relative overflow-hidden bg-gradient-to-b from-emerald-50 via-white to-slate-50 px-4 pb-20 pt-16 sm:px-6 md:pt-24 lg:px-8 lg:pb-24">
+                    <div class="mx-auto max-w-4xl text-center">
+                        <h1 class="text-4xl font-black leading-tight tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
                             Belajar mengelola uang dengan <span class="text-emerald-700">lebih mudah.</span>
                         </h1>
-                        <p class="mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-600 sm:text-base lg:mx-0">
+                        <p class="mx-auto mt-5 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
                             Bank Mini Sekolah membantu siswa mengenal kebiasaan menabung dan menghadirkan pengelolaan transaksi sekolah yang tercatat, tertib, dan transparan.
                         </p>
-                        <div class="mt-7 flex flex-wrap justify-center gap-3 lg:justify-start">
-                            <a href="#tentang" class="rounded-xl bg-emerald-700 px-5 py-3 text-xs font-extrabold text-white shadow-lg shadow-emerald-900/15 transition hover:bg-emerald-800">
-                                Kenali Bank Mini <i class="fa-solid fa-arrow-down ml-2"></i>
+                        <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+                            <a href="/login" class="inline-flex items-center rounded-xl bg-emerald-700 px-7 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-800 hover:shadow-xl">
+                                Login
                             </a>
-                            <a href="#keunggulan" class="rounded-xl border border-emerald-200 bg-white px-5 py-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50">
-                                Lihat Keunggulan
+                            <a href="#tentang" class="inline-flex items-center rounded-xl border border-emerald-200 bg-white px-5 py-3.5 text-xs font-bold text-emerald-800 shadow-xs transition hover:bg-emerald-50">
+                                Kenali Bank Mini
+                            </a>
+                            <a href="#alur" class="inline-flex items-center rounded-xl border border-emerald-200 bg-white px-5 py-3.5 text-xs font-bold text-emerald-800 shadow-xs transition hover:bg-emerald-50">
+                                Cara Bertransaksi
                             </a>
                         </div>
                     </div>
+                </section>
 
-                    <div class="mx-auto w-full max-w-md">
-                        <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-700 via-green-700 to-teal-800 p-1 shadow-2xl shadow-emerald-900/20">
-                            <div class="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10"></div>
-                            <div class="relative rounded-[1.8rem] bg-white p-6 text-center sm:p-8">
-                                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white">
-                                    <img src="/images/logo-smkn1-bantul.png" alt="Logo SMK Negeri 1 Bantul" class="h-14 w-14 object-contain">
-                                </div>
-                                <p class="mt-5 text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Akses dalam genggaman</p>
-                                <h2 class="mt-2 text-2xl font-black text-slate-900">Bank Mini Mobile</h2>
-                                <p class="mx-auto mt-3 max-w-xs text-xs leading-6 text-slate-500">
-                                    Gunakan aplikasi Android untuk mengakses layanan Bank Mini Sekolah dengan praktis.
-                                </p>
-                                ${window.bankMiniApkUrl
-                                    ? `<a href="${window.bankMiniApkUrl}" download
-                                        class="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-900/15 transition hover:bg-emerald-800">
-                                        <i class="fa-solid fa-download"></i> Download APK
-                                    </a>
-                                    <p class="mt-3 text-[10px] text-slate-400">Unduh aplikasi Android Bank Mini Sekolah.</p>`
-                                    : `<button type="button" disabled
-                                        class="mt-6 inline-flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl bg-slate-300 px-5 py-3.5 text-sm font-extrabold text-white">
-                                        <i class="fa-solid fa-clock"></i> APK Segera Tersedia
-                                    </button>
-                                    <p class="mt-3 text-[10px] text-slate-400">Letakkan file APK di <span class="font-mono">public/downloads/bank-mini.apk</span> untuk mengaktifkan unduhan.</p>`
-                                }
+                <!-- SECTION 1: TENTANG & KEUNGGULAN -->
+                <section id="tentang" class="border-y border-emerald-100 bg-white py-16 sm:py-20">
+                    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                        <div class="mx-auto max-w-2xl text-center">
+                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Tentang Layanan</p>
+                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Apa itu Bank Mini Sekolah?</h2>
+                            <p class="mt-4 text-sm leading-7 text-slate-600">
+                                Bank Mini adalah layanan tabungan dan sarana edukasi keuangan di lingkungan sekolah. Siswa maupun guru dapat menabung dengan aman, sementara petugas mengelola setoran, penarikan, dan pencatatan kas melalui sistem yang terintegrasi secara profesional.
+                            </p>
+                        </div>
+
+                        <div id="keunggulan" class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-6 transition hover:shadow-md hover:bg-emerald-50/80">
+                                <span class="text-xs font-black text-emerald-600">01</span>
+                                <h3 class="mt-2 text-sm font-extrabold text-slate-800">Biasakan Menabung</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Membantu membangun kebiasaan menyisihkan uang saku sejak dini untuk masa depan pendidikan.</p>
+                            </article>
+                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-6 transition hover:shadow-md hover:bg-emerald-50/80">
+                                <span class="text-xs font-black text-emerald-600">02</span>
+                                <h3 class="mt-2 text-sm font-extrabold text-slate-800">Transaksi Tercatat</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Setiap setoran dan penarikan tercatat ke buku kas digital dan disertai bukti struk fisik resmi.</p>
+                            </article>
+                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-6 transition hover:shadow-md hover:bg-emerald-50/80">
+                                <span class="text-xs font-black text-emerald-600">03</span>
+                                <h3 class="mt-2 text-sm font-extrabold text-slate-800">Kas Lebih Terpantau</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Membantu petugas memantau saldo, jurnal, penutupan kas loket, dan audit pembukuan sekolah.</p>
+                            </article>
+                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-6 transition hover:shadow-md hover:bg-emerald-50/80">
+                                <span class="text-xs font-black text-emerald-600">04</span>
+                                <h3 class="mt-2 text-sm font-extrabold text-slate-800">Akses Praktis & Cepat</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Dukungan pemindaian kartu QR nasabah membuat proses antrean di loket berjalan efisien.</p>
+                            </article>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 2: ALUR MENABUNG -->
+                <section id="alur" class="bg-slate-50/60 py-16 sm:py-20">
+                    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                        <div class="mx-auto max-w-2xl text-center">
+                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Panduan Bertransaksi</p>
+                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Alur Menabung Mudah & Terstruktur</h2>
+                            <p class="mt-4 text-sm leading-7 text-slate-600">
+                                4 langkah sederhana bagi siswa dan guru untuk mulai menabung dan bertransaksi di Bank Mini Sekolah.
+                            </p>
+                        </div>
+
+                        <div class="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                            <div class="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+                                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-sm font-black text-emerald-800">1</span>
+                                <h3 class="mt-5 text-sm font-extrabold text-slate-800">Buka Rekening</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Siswa didaftarkan oleh administrator dan menerima nomor rekening tabungan serta akun portal.</p>
+                            </div>
+
+                            <div class="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+                                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-sm font-black text-emerald-800">2</span>
+                                <h3 class="mt-5 text-sm font-extrabold text-slate-800">Kunjungi Loket</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Datangi ruang loket Bank Mini pada jam operasional dengan membawa uang setoran atau kartu nasabah.</p>
+                            </div>
+
+                            <div class="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+                                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-sm font-black text-emerald-800">3</span>
+                                <h3 class="mt-5 text-sm font-extrabold text-slate-800">Proses di Loket</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Teller memproses setoran tunai atau penarikan dana dengan verifikasi keamanan PIN 6-digit.</p>
+                            </div>
+
+                            <div class="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+                                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-sm font-black text-emerald-800">4</span>
+                                <h3 class="mt-5 text-sm font-extrabold text-slate-800">Struk & Pantau Saldo</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Terima bukti struk transaksi fisik dan pantau saldo berkala melalui portal siswa secara mandiri.</p>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <section id="tentang" class="border-y border-emerald-100 bg-white">
-                    <div class="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+                <!-- SECTION 3: LAYANAN UTAMA -->
+                <section id="layanan" class="border-y border-emerald-100 bg-white py-16 sm:py-20">
+                    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div class="mx-auto max-w-2xl text-center">
-                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Tentang layanan</p>
-                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Apa itu Bank Mini Sekolah?</h2>
+                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Fitur & Layanan</p>
+                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Layanan Keuangan Sekolah Terpadu</h2>
                             <p class="mt-4 text-sm leading-7 text-slate-600">
-                                Bank Mini adalah sarana edukasi keuangan di lingkungan sekolah. Siswa dapat membangun kebiasaan menabung, sementara petugas mengelola setoran, penarikan, dan pencatatan kas melalui sistem yang terintegrasi.
+                                Sistem E-Teller dilengkapi fitur terintegrasi yang menjamin ketertiban dan akurasi kas loket harian.
                             </p>
                         </div>
-                        <div id="keunggulan" class="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><i class="fa-solid fa-piggy-bank"></i></div>
-                                <h3 class="mt-4 text-sm font-extrabold text-slate-800">Biasakan menabung</h3>
-                                <p class="mt-2 text-xs leading-6 text-slate-600">Mendukung edukasi dan kebiasaan mengelola tabungan sejak di sekolah.</p>
-                            </article>
-                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><i class="fa-solid fa-bolt"></i></div>
-                                <h3 class="mt-4 text-sm font-extrabold text-slate-800">Transaksi tercatat</h3>
-                                <p class="mt-2 text-xs leading-6 text-slate-600">Setoran dan penarikan dicatat secara digital dengan bukti transaksi.</p>
-                            </article>
-                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><i class="fa-solid fa-chart-pie"></i></div>
-                                <h3 class="mt-4 text-sm font-extrabold text-slate-800">Kas lebih terpantau</h3>
-                                <p class="mt-2 text-xs leading-6 text-slate-600">Membantu petugas memantau saldo, jurnal, dan laporan kas sekolah.</p>
-                            </article>
-                            <article class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><i class="fa-solid fa-qrcode"></i></div>
-                                <h3 class="mt-4 text-sm font-extrabold text-slate-800">Akses praktis</h3>
-                                <p class="mt-2 text-xs leading-6 text-slate-600">Pencarian rekening dan kartu QR membantu layanan berjalan lebih cepat.</p>
-                            </article>
+
+                        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Simpanan</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">Tabungan Siswa & Guru</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Simpanan aman tanpa potongan administrasi bulanan, dirancang mendukung literasi keuangan sekolah.</p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Operasional</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">Loket Teller Digital</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Layanan setoran dan penarikan instan dengan validasi saldo otomatis dan deteksi status kas loket.</p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Keamanan</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">PIN Keamanan 6-Digit</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Setiap penarikan dana wajib mengonfirmasi kode PIN pemilik rekening untuk perlindungan maksimal.</p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Bukti Sah</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">Pencetakan Struk Otomatis</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Bukti struk tercetak dengan nomor referensi unik, kode transaksi, waktu, serta saldo terakhir nasabah.</p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Audit & Kas</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">Tutup Kas & Review Supervisor</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Validasi uang fisik loket versus pencatatan sistem di akhir hari dengan otorisasi pengawasan ketat.</p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/40 p-6 transition hover:border-emerald-300 hover:bg-white hover:shadow-xs">
+                                <span class="inline-block rounded-lg bg-emerald-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-800">Akses Mandiri</span>
+                                <h3 class="mt-3 text-sm font-extrabold text-slate-900">Portal Nasabah Mandiri</h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">Siswa dapat masuk ke sistem untuk melihat saldo tabungan, mutasi 30 hari, serta kartu QR rekening.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 4: JADWAL & LOKASI -->
+                <section id="jadwal" class="bg-slate-50/60 py-16 sm:py-20">
+                    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                        <div class="mx-auto max-w-2xl text-center">
+                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Informasi Operasional</p>
+                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Jadwal & Lokasi Layanan Loket</h2>
+                            <p class="mt-4 text-sm leading-7 text-slate-600">
+                                Kunjungi loket Bank Mini di sekolah pada waktu layanan untuk setoran atau penarikan saldo.
+                            </p>
+                        </div>
+
+                        <div class="mt-12 grid gap-6 lg:grid-cols-2">
+                            <!-- Card Jam Layanan -->
+                            <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xs">
+                                <h3 class="text-base font-extrabold text-slate-900">Jam Operasional Loket</h3>
+                                <p class="text-xs text-slate-500">Waktu pelayanan transaksi tunai</p>
+                                <ul class="mt-6 space-y-3 text-xs">
+                                    <li class="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                                        <span class="font-bold text-slate-700">Hari Layanan</span>
+                                        <span class="font-extrabold text-emerald-700">Senin – Jumat</span>
+                                    </li>
+                                    <li class="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                                        <span class="font-bold text-slate-700">Sesi Pagi</span>
+                                        <span class="font-semibold text-slate-800">08.00 – 11.30 WIB</span>
+                                    </li>
+                                    <li class="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                                        <span class="font-bold text-slate-700">Istirahat & Sholat</span>
+                                        <span class="font-semibold text-amber-700">11.30 – 12.45 WIB</span>
+                                    </li>
+                                    <li class="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                                        <span class="font-bold text-slate-700">Sesi Siang</span>
+                                        <span class="font-semibold text-slate-800">12.45 – 14.30 WIB</span>
+                                    </li>
+                                    <li class="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                                        <span class="font-bold text-slate-700">Sabtu, Minggu & Hari Libur</span>
+                                        <span class="font-bold text-slate-400">Tutup</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Card Lokasi & Petugas -->
+                            <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xs">
+                                <h3 class="text-base font-extrabold text-slate-900">Lokasi & Pengelola</h3>
+                                <p class="text-xs text-slate-500">Informasi ruang praktik dan pendampingan</p>
+                                <div class="mt-6 space-y-4 text-xs leading-6 text-slate-600">
+                                    <div class="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+                                        <p class="font-bold text-emerald-900">Ruang Praktik Bank Mini Sekolah</p>
+                                        <p class="mt-1 text-slate-600">Gedung Kejuruan Lantai 1, SMK Negeri 1 Bantul. Bersebelahan dengan Laboratorium Komputer Akuntansi.</p>
+                                    </div>
+                                    <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                                        <p class="font-bold text-slate-800">Petugas Loket (Piket Teller)</p>
+                                        <p class="mt-1 text-slate-600">Dikelola oleh siswa praktikan program keahlian Akuntansi dan Rekayasa Perangkat Lunak (RPL) dengan bimbingan Guru Kejuruan.</p>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 italic">
+                                        Tips: Siapkan kartu identitas/QR nasabah dan uang pas agar pelayanan di loket lebih cepat.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 5: FAQ -->
+                <section id="faq" class="border-y border-emerald-100 bg-white py-16 sm:py-20">
+                    <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+                        <div class="mx-auto max-w-2xl text-center">
+                            <p class="text-[10px] font-extrabold uppercase tracking-[.2em] text-emerald-700">Tanya Jawab</p>
+                            <h2 class="mt-2 text-2xl font-black text-slate-900 sm:text-3xl">Pertanyaan yang Sering Diajukan</h2>
+                            <p class="mt-4 text-sm leading-7 text-slate-600">
+                                Temukan jawaban atas pertanyaan umum terkait pembukaan rekening dan layanan tabungan.
+                            </p>
+                        </div>
+
+                        <div class="mt-12 space-y-4">
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 transition hover:bg-white hover:shadow-xs">
+                                <h3 class="text-sm font-extrabold text-slate-900">
+                                    Berapa batas minimal setoran menabung di Bank Mini?
+                                </h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">
+                                    Sangat terjangkau! Minimal setoran tabungan adalah Rp 5.000. Siswa bebas menyisihkan uang sakunya kapan pun saat loket buka.
+                                </p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 transition hover:bg-white hover:shadow-xs">
+                                <h3 class="text-sm font-extrabold text-slate-900">
+                                    Apakah ada potongan biaya administrasi bulanan?
+                                </h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">
+                                    Tidak ada sama sekali. Tabungan di Bank Mini Sekolah bebas biaya administrasi bulanan, sehingga saldo tabungan Anda tetap utuh.
+                                </p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 transition hover:bg-white hover:shadow-xs">
+                                <h3 class="text-sm font-extrabold text-slate-900">
+                                    Bagaimana jika nasabah lupa PIN penarikan atau kata sandi?
+                                </h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">
+                                    Siswa dapat mendatangi loket atau menemui petugas Administrator di sekolah dengan menunjukkan kartu pelajar/identitas siswa yang sah untuk memulihkan atau mereset PIN transaksi.
+                                </p>
+                            </div>
+
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 transition hover:bg-white hover:shadow-xs">
+                                <h3 class="text-sm font-extrabold text-slate-900">
+                                    Bagaimana cara memantau mutasi dan saldo tabungan?
+                                </h3>
+                                <p class="mt-2 text-xs leading-6 text-slate-600">
+                                    Klik tombol "Login" pada website ini, lalu masukkan username dan kata sandi Anda. Anda dapat melihat saldo terkini dan riwayat transaksi 30 hari terakhir kapan saja.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION 6: CTA BANNER -->
+                <section class="bg-gradient-to-br from-emerald-800 via-teal-800 to-green-900 px-4 py-16 text-white sm:px-6 sm:py-20 lg:px-8">
+                    <div class="mx-auto max-w-4xl text-center">
+                        <h2 class="text-3xl font-black tracking-tight sm:text-4xl">Siap Mulai Mengelola Tabungan Sekolah?</h2>
+                        <p class="mx-auto mt-4 max-w-xl text-xs sm:text-sm leading-6 text-emerald-100">
+                            Masuk ke sistem E-Teller Bank Mini sekarang untuk memeriksa saldo tabungan, melayani transaksi loket harian, atau mencetak laporan kas.
+                        </p>
+                        <div class="mt-8">
+                            <a href="/login" class="inline-flex items-center rounded-xl bg-white px-8 py-3.5 text-sm font-extrabold text-emerald-800 shadow-xl transition hover:bg-emerald-50 hover:scale-105">
+                                Masuk ke Sistem (Login)
+                            </a>
                         </div>
                     </div>
                 </section>
             </main>
 
-            <footer class="px-4 py-6 text-center text-[11px] text-slate-500">
-                Uji Kompetensi Keahlian RPL &copy; 2026 Bank Mini Sekolah
+            <!-- FOOTER -->
+            <footer class="border-t border-slate-200 bg-white text-slate-600">
+                <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+                    <div class="grid gap-8 md:grid-cols-3">
+                        <div>
+                            <div class="flex items-center gap-2.5">
+                                <img src="/images/logo-smkn1-bantul.png" alt="Logo SMK Negeri 1 Bantul" class="h-10 w-10 rounded-xl border border-emerald-100 bg-white object-contain p-1">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">Bank Mini Sekolah</p>
+                                    <p class="text-xs font-extrabold text-slate-800">SMK Negeri 1 Bantul</p>
+                                </div>
+                            </div>
+                            <p class="mt-4 text-xs leading-6 text-slate-500">
+                                Sistem Informasi E-Teller dan Akuntansi Kas Loket Bank Mini Sekolah. Dirancang untuk mengawal integritas transaksi, transparansi keuangan, dan literasi perbankan siswa.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h4 class="text-xs font-black uppercase tracking-wider text-slate-900">Tautan Cepat</h4>
+                            <ul class="mt-4 space-y-2 text-xs">
+                                <li><a href="#tentang" class="hover:text-emerald-700 transition">Tentang Bank Mini</a></li>
+                                <li><a href="#keunggulan" class="hover:text-emerald-700 transition">Keunggulan Layanan</a></li>
+                                <li><a href="#alur" class="hover:text-emerald-700 transition">Alur Menabung</a></li>
+                                <li><a href="#layanan" class="hover:text-emerald-700 transition">Fitur & Layanan</a></li>
+                                <li><a href="#jadwal" class="hover:text-emerald-700 transition">Jadwal Operasional</a></li>
+                                <li><a href="#faq" class="hover:text-emerald-700 transition">Pertanyaan Umum (FAQ)</a></li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4 class="text-xs font-black uppercase tracking-wider text-slate-900">Kontak & Lokasi</h4>
+                            <ul class="mt-4 space-y-2.5 text-xs text-slate-500 leading-5">
+                                <li><strong class="text-slate-700">Sekolah:</strong> SMK Negeri 1 Bantul</li>
+                                <li><strong class="text-slate-700">Alamat:</strong> Jl. Bantul No. 99, D.I. Yogyakarta</li>
+                                <li><strong class="text-slate-700">Lokasi Loket:</strong> Gedung Praktik Akuntansi (Lantai 1)</li>
+                                <li><strong class="text-slate-700">Hari Layanan:</strong> Senin – Jumat: 08.00 – 14.30 WIB</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-10 border-t border-slate-100 pt-6 text-center text-[11px] text-slate-400">
+                        Uji Kompetensi Keahlian RPL &copy; 2026 Bank Mini Sekolah SMK Negeri 1 Bantul. All rights reserved.
+                    </div>
+                </div>
             </footer>
         </div>
     `,
 
+    // ========================================================================
+    // [FITUR 06] VIEW: FORM LOGIN TERPADU & MODAL PEMULIHAN
+    // - Deskripsi : Form login terintegrasi untuk seluruh role (Teller, Spv, Admin, Nasabah)
+    //               serta modal reset password & reset PIN dengan OTP via email.
+    // - Cari Cepat: FITUR_VIEW_LOGIN
+    // ========================================================================
     Login: () => `
         <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-300 via-cyan-400 to-sky-300 p-4 sm:p-6">
             <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-emerald-100">
@@ -397,6 +713,12 @@ const Views = {
     `
 };
 
+// ============================================================================
+// [FITUR 07] HANDLER LOGIN PENGGUNA
+// - Deskripsi : Memproses submit form login, validasi kredensial ke /api/auth/login,
+//               menyimpan sesi token Sanctum, dan mengarahkan dashboard sesuai role.
+// - Cari Cepat: FITUR_HANDLE_LOGIN
+// ============================================================================
 async function handleLogin(e) {
     e.preventDefault();
     const btn = document.getElementById('btn-submit-login');
@@ -515,6 +837,12 @@ function toggleCredentialVisibility(inputId, button) {
     button.title = isHidden ? 'Sembunyikan' : 'Lihat';
 }
 
+// ============================================================================
+// [FITUR 08] PEMULIHAN PASSWORD & PIN TRANSAKSI (OTP EMAIL)
+// - Deskripsi : Mengirim kode OTP 6-digit via email untuk mereset kata sandi
+//               atau PIN 6-digit nasabah Saver jika lupa.
+// - Cari Cepat: FITUR_LUPA_PASSWORD_PIN_OTP
+// ============================================================================
 async function startCredentialRecovery(credential, saverId = null) {
     const label = credential === 'pin' ? 'PIN' : 'password';
     try {
@@ -653,6 +981,11 @@ async function startCredentialRecovery(credential, saverId = null) {
     }
 }
 
+// ============================================================================
+// [FITUR 09] LOGOUT PENGGUNA
+// - Deskripsi : Mengakhiri sesi pengguna, menghapus token di database dan localStorage.
+// - Cari Cepat: FITUR_LOGOUT
+// ============================================================================
 function handleLogout() {
     Swal.fire({
         title: 'Konfirmasi Keluar',
@@ -665,6 +998,10 @@ function handleLogout() {
         cancelButtonText: 'Batal'
     }).then(async (result) => {
         if (result.isConfirmed) {
+            if (nasabahBankStatusInterval) {
+                clearInterval(nasabahBankStatusInterval);
+                nasabahBankStatusInterval = null;
+            }
             try {
                 await apiCall('/auth/logout', 'POST');
             } catch (e) {
@@ -676,9 +1013,11 @@ function handleLogout() {
     });
 }
 
-// ----------------------------------------------------------------------------
-// 6. VIEW: DASHBOARD ADMINISTRATOR
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 10] VIEW: DASHBOARD ADMINISTRATOR
+// - Deskripsi : Tata letak portal admin master data (Member, Saver, Akun Staf).
+// - Cari Cepat: FITUR_ADMIN_LAYOUT
+// ============================================================================
 Views.AdminLayout = () => {
     const user = Auth.getUser();
     return `
@@ -769,6 +1108,25 @@ Views.AdminLayout = () => {
                         <h3 class="font-bold text-slate-800 text-lg">Daftar Saver</h3>
                         <p class="text-xs text-slate-500">Siswa yang sudah dibuatkan akun login. Rekening dan kartu QR dibuat saat akun diaktifkan; saldo bertambah saat setoran di Teller.</p>
                     </div>
+                    <div id="admin-saver-closure-approval" class="bg-white rounded-xl border border-amber-200 overflow-hidden shadow-sm">
+                        <div class="flex flex-col gap-3 border-b border-amber-100 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h3 class="font-bold text-amber-900">Pengajuan Hapus Akun dari Teller</h3>
+                                <p class="mt-1 text-xs text-amber-800">Periksa penarikan penuh dan setujui penghapusan akun. Riwayat transaksi dan jurnal tetap disimpan.</p>
+                            </div>
+                            <button onclick="loadAdminNasabah()" class="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"><i class="fa-solid fa-rotate mr-1"></i>Muat Ulang</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[850px] text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-600 uppercase border-b border-slate-200"><tr>
+                                    <th class="py-3 px-4">Nasabah</th><th class="py-3 px-4">No. Rekening</th><th class="py-3 px-4">Teller</th><th class="py-3 px-4 text-right">Jumlah Ditarik</th><th class="py-3 px-4">Waktu Pengajuan</th><th class="py-3 px-4 text-center">Persetujuan</th>
+                                </tr></thead>
+                                <tbody id="tbody-saver-closure-requests" class="divide-y divide-slate-100 text-slate-700">
+                                    <tr><td colspan="6" class="py-6 text-center text-slate-400">Memuat pengajuan...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                     <div class="bg-white p-3 rounded-xl border border-slate-200">
                         <label for="admin-saver-search" class="sr-only">Cari Saver</label>
                         <div class="relative">
@@ -839,9 +1197,13 @@ Views.AdminLayout = () => {
     `;
 };
 
-// ----------------------------------------------------------------------------
-// HANDLER & EVENT LOGIC: ADMINISTRATOR
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 11] KELOLA DATA NASABAH (SAVER)
+// - Deskripsi : Menampilkan daftar nasabah pemilik rekening, pencarian instan,
+//               status akun aktif/nonaktif, soft delete (arsip Saver),
+//               serta pembuatan kredensial login akun siswa.
+// - Cari Cepat: FITUR_DATA_SAVER
+// ============================================================================
 function initAdminEvents() {
     loadAdminMembers();
 }
@@ -870,8 +1232,61 @@ async function loadAdminNasabah() {
         const tbody = document.getElementById('tbody-nasabah');
         cachedAdminNasabah = res.data || [];
         renderAdminNasabahRows(tbody, '');
+        if (document.getElementById('tbody-saver-closure-requests')) {
+            await loadSaverClosureRequests();
+        }
     } catch (e) {
         console.error(e);
+    }
+}
+
+async function loadSaverClosureRequests() {
+    const tbody = document.getElementById('tbody-saver-closure-requests');
+    if (!tbody) return;
+
+    try {
+        const response = await apiCall('/admin/saver-closure-requests');
+        const requests = response.data || [];
+        if (!requests.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-400">Tidak ada pengajuan penghapusan yang menunggu persetujuan.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = requests.map(item => `
+            <tr class="hover:bg-slate-50">
+                <td class="py-3 px-4 font-semibold">${escapeHtml(item.saver?.nama_siswa || '-')}<span class="block text-[10px] text-slate-400">NIS ${escapeHtml(item.saver?.nis || '-')}</span></td>
+                <td class="py-3 px-4 font-mono">${escapeHtml(item.saver?.no_rekening || '-')}</td>
+                <td class="py-3 px-4">${escapeHtml(item.teller || '-')}</td>
+                <td class="py-3 px-4 text-right font-mono font-bold">${formatRupiah(item.jumlah_penarikan)}</td>
+                <td class="py-3 px-4">${escapeHtml(formatDate(item.created_at))}</td>
+                <td class="py-3 px-4"><div class="flex justify-center gap-2">
+                    <button onclick="approveSaverClosureRequest(${item.id})" class="rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700">Setujui</button>
+                </div></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-red-600">${escapeHtml(error.message || 'Pengajuan tidak dapat dimuat.')}</td></tr>`;
+    }
+}
+
+async function approveSaverClosureRequest(requestId) {
+    const result = await Swal.fire({
+        title: 'Setujui penghapusan akun?',
+        text: 'Akun Saver akan diarsipkan dan akses loginnya dinonaktifkan. Riwayat transaksi serta jurnal tetap tersimpan.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Setujui Penghapusan',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#059669',
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await apiCall(`/admin/saver-closure-requests/${requestId}/approve`, 'POST', {});
+        await loadAdminNasabah();
+        await Swal.fire('Penghapusan Disetujui', response.message, 'success');
+    } catch (error) {
+        await Swal.fire('Persetujuan Gagal', error.message || 'Pengajuan tidak dapat disetujui.', 'error');
     }
 }
 
@@ -923,7 +1338,12 @@ function renderAdminNasabahRows(tbody, query) {
                 </td>
                 <td class="py-3 px-4 text-center">
                     <div class="flex flex-col items-center justify-center gap-2">
-                        ${canManageSaver && !item.has_login ? `
+                        ${canManageSaver && item.closure_pending ? `
+                            <span class="rounded-lg bg-amber-100 px-2.5 py-1.5 text-[10px] font-bold text-amber-800">Menunggu Persetujuan</span>
+                            <div class="flex gap-1.5">
+                                <button onclick="approveSaverClosureRequest(${item.closure_request_id})" class="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-700">Setujui</button>
+                            </div>
+                        ` : canManageSaver && !item.has_login ? `
                             <button onclick="setSaverCredentials(${item.id})"
                                 class="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 font-bold rounded-lg border transition">
                                 Buat Login
@@ -932,10 +1352,6 @@ function renderAdminNasabahRows(tbody, query) {
                             <button onclick="toggleSaverStatus(${item.id}, ${!item.is_active})"
                                 class="px-2.5 py-1.5 ${item.is_active ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'} font-bold rounded-lg border transition">
                                 ${item.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-                            </button>
-                            <button onclick="deleteSaver(${item.id}, decodeURIComponent('${encodeURIComponent(item.nama_siswa)}'))"
-                                class="px-2.5 py-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 font-bold rounded-lg border transition">
-                                <i class="fa-solid fa-trash"></i> Hapus
                             </button>
                         ` : '<span class="text-[10px] text-slate-400">Khusus Admin</span>'}
                     </div>
@@ -964,9 +1380,6 @@ async function loadAdminMembers() {
                 <td class="py-3 px-4">${escapeHtml(item.gender || '-')}</td>
                 <td class="py-3 px-4"><span class="px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">Belum dibuatkan akun</span></td>
                 <td class="py-3 px-4 text-center whitespace-nowrap">
-                    <button onclick="activateAdminMember(${item.user_id})" class="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold rounded-lg transition" title="Aktifkan akun dan pindahkan ke Saver">
-                        <i class="fa-solid fa-user-check"></i> Aktifkan Akun
-                    </button>
                     <button onclick="editMember(${item.user_id})" class="p-1.5 text-teal-700 hover:bg-teal-50 rounded-lg" title="Ubah anggota">
                         <i class="fa-solid fa-pen"></i>
                     </button>
@@ -977,15 +1390,199 @@ async function loadAdminMembers() {
             </tr>
         `).join('');
     } catch (error) {
-        console.error(error);
+        const tbody = document.getElementById('tbody-members');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-red-600">${escapeHtml(error.message || 'Data Member gagal dimuat.')}</td></tr>`;
     }
 }
 
+async function loadTellerMembers() {
+    const tbody = document.getElementById('tbody-teller-members');
+    if (!tbody) return;
+
+    try {
+        const search = document.getElementById('teller-member-search')?.value.trim() || '';
+        const response = await apiCall(`/teller/members${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+        if (!response.data?.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-slate-400">${search ? 'Member tidak ditemukan.' : 'Belum ada data Member.'}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = response.data.map(item => `
+            <tr class="hover:bg-slate-50 transition">
+                <td class="py-3 px-4 font-mono">${escapeHtml(item.student_number)}</td>
+                <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(item.student_name)}</td>
+                <td class="py-3 px-4">${escapeHtml(item.class || '-')}</td>
+                <td class="py-3 px-4">${item.graduation_year}</td>
+                <td class="py-3 px-4">${escapeHtml(item.nomor_hp || '-')}</td>
+                <td class="py-3 px-4">${escapeHtml(item.gender || '-')}</td>
+                <td class="py-3 px-4"><span class="px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">Belum menjadi Saver</span></td>
+                <td class="py-3 px-4 text-center whitespace-nowrap">
+                    <button onclick="activateTellerMember(${item.user_id})" class="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold rounded-lg transition">
+                        <i class="fa-solid fa-user-check"></i> Aktivasi
+                    </button>
+                    <button onclick="editMember(${item.user_id})" class="p-1.5 text-teal-700 hover:bg-teal-50 rounded-lg" title="Ubah member">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button onclick="deleteMember(${item.user_id})" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="Hapus member">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-red-600">${escapeHtml(error.message || 'Data Member gagal dimuat.')}</td></tr>`;
+    }
+}
+
+// ============================================================================
+// [FITUR 12] KELOLA DATA MEMBER & SISWA (Import, Aktivasi, Kenaikan Kelas)
+// - Deskripsi : CRUD data calon nasabah (Member), upload spreadsheet Excel/CSV,
+//               aktivasi member menjadi Saver dengan nomor rekening baru,
+//               kenaikan kelas serentak per tahun kelulusan, dan siswa tidak naik kelas.
+// - Cari Cepat: FITUR_DATA_MEMBER_IMPORT
+// ============================================================================
 let memberSearchTimeout;
 
 function searchAdminMembers() {
     clearTimeout(memberSearchTimeout);
     memberSearchTimeout = setTimeout(loadAdminMembers, 250);
+}
+
+async function promoteMembersByGraduationYear() {
+    const result = await Swal.fire({
+        title: 'Kenaikan Kelas Serentak',
+        html: `
+            <p class="mb-3 text-left text-sm text-slate-600">Pilih tahun kelulusan untuk menaikkan seluruh member pada angkatan tersebut. Kelas X menjadi XI dan XI menjadi XII; kelas XII tetap. Tahun kelulusan tidak berubah.</p>
+            <label for="promotion-graduation-year" class="block text-left text-xs font-bold text-slate-600">Tahun kelulusan</label>
+            <input id="promotion-graduation-year" type="number" min="2000" max="2100" class="swal2-input" value="${new Date().getFullYear()}">
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Proses Kenaikan',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#138f9c',
+        preConfirm: async () => {
+            const graduationYear = Number(document.getElementById('promotion-graduation-year').value);
+            if (!Number.isInteger(graduationYear) || graduationYear < 2000 || graduationYear > 2100) {
+                Swal.showValidationMessage('Masukkan tahun kelulusan antara 2000 dan 2100.');
+                return false;
+            }
+
+            try {
+                return await apiCall('/admin/members/promote-by-graduation-year', 'POST', {
+                    graduation_year: graduationYear
+                });
+            } catch (error) {
+                const details = Array.isArray(error.errors) ? ` ${error.errors.join(', ')}` : '';
+                Swal.showValidationMessage(`${error.message || 'Kenaikan kelas gagal diproses.'}${details}`);
+                return false;
+            }
+        }
+    });
+
+    if (result.isConfirmed && result.value) {
+        await Swal.fire('Kenaikan Kelas Selesai', result.value.message, 'success');
+        await loadAdminMembers();
+    }
+}
+
+async function reclassifyMember() {
+    const searchResult = await Swal.fire({
+        title: 'Cari Siswa yang Tidak Naik Kelas',
+        input: 'text',
+        inputLabel: 'Cari berdasarkan NIS atau nama siswa',
+        inputPlaceholder: 'Masukkan NIS atau nama siswa',
+        showCancelButton: true,
+        confirmButtonText: 'Cari Siswa',
+        cancelButtonText: 'Batal',
+        preConfirm: async (query) => {
+            const search = query.trim();
+            if (!search) {
+                Swal.showValidationMessage('Masukkan NIS atau nama siswa untuk mencari.');
+                return false;
+            }
+
+            try {
+                const response = await apiCall(`/admin/members?search=${encodeURIComponent(search)}`);
+                return response.data || [];
+            } catch (error) {
+                Swal.showValidationMessage(error.message || 'Data siswa gagal dicari.');
+                return false;
+            }
+        }
+    });
+
+    if (!searchResult.isConfirmed) return;
+    if (!searchResult.value.length) {
+        await Swal.fire('Siswa Tidak Ditemukan', 'Periksa kembali NIS atau nama siswa.', 'info');
+        return;
+    }
+
+    const memberOptions = Object.fromEntries(searchResult.value.map(member => [
+        String(member.user_id),
+        `${member.student_number} - ${member.student_name} (Kelas ${member.class || '-'}, ${member.graduation_year})`
+    ]));
+    const selection = await Swal.fire({
+        title: 'Pilih Siswa',
+        input: 'select',
+        inputOptions: memberOptions,
+        inputPlaceholder: 'Pilih siswa',
+        showCancelButton: true,
+        confirmButtonText: 'Lanjutkan',
+        cancelButtonText: 'Batal',
+        inputValidator: value => value ? undefined : 'Pilih siswa terlebih dahulu.'
+    });
+    if (!selection.isConfirmed) return;
+
+    const member = searchResult.value.find(item => String(item.user_id) === selection.value);
+    if (!member) {
+        await Swal.fire('Gagal Memilih Siswa', 'Data siswa yang dipilih tidak lagi tersedia. Silakan cari kembali.', 'error');
+        return;
+    }
+
+    const updateResult = await Swal.fire({
+        title: 'Perbarui Data Kelas Siswa',
+        html: `
+            <p class="mb-3 text-left text-xs text-slate-600">${escapeHtml(member.student_name)} (${escapeHtml(member.student_number)})</p>
+            <label for="reclass-grade" class="block text-left text-xs font-bold text-slate-600">Kelas</label>
+            <input id="reclass-grade" type="text" maxlength="20" class="swal2-input" placeholder="Contoh: XI" value="${escapeHtml(String(member.class || '').split(/\s+/)[0] || '')}">
+            <label for="reclass-major" class="block text-left text-xs font-bold text-slate-600">Jurusan / Rombel</label>
+            <input id="reclass-major" type="text" maxlength="20" class="swal2-input" placeholder="Contoh: RPL 1" value="${escapeHtml(String(member.class || '').split(/\s+/).slice(1).join(' '))}">
+            <label for="reclass-graduation-year" class="block text-left text-xs font-bold text-slate-600">Tahun kelulusan</label>
+            <input id="reclass-graduation-year" type="number" min="2000" max="2100" class="swal2-input" value="${member.graduation_year}">
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Simpan Perubahan',
+        cancelButtonText: 'Batal',
+        preConfirm: async () => {
+            const grade = document.getElementById('reclass-grade').value.trim();
+            const major = document.getElementById('reclass-major').value.trim();
+            const graduationYear = Number(document.getElementById('reclass-graduation-year').value);
+            const className = `${grade} ${major}`.trim();
+            if (!grade || !major || className.length > 20) {
+                Swal.showValidationMessage('Isi kelas dan jurusan/rombel; gabungannya maksimal 20 karakter.');
+                return false;
+            }
+            if (!Number.isInteger(graduationYear) || graduationYear < 2000 || graduationYear > 2100) {
+                Swal.showValidationMessage('Masukkan tahun kelulusan antara 2000 dan 2100.');
+                return false;
+            }
+
+            try {
+                return await apiCall(`/admin/members/${member.user_id}/reclassify`, 'PATCH', {
+                    class: className,
+                    graduation_year: graduationYear
+                });
+            } catch (error) {
+                Swal.showValidationMessage(error.message || 'Data kelas siswa gagal diperbarui.');
+                return false;
+            }
+        }
+    });
+
+    if (updateResult.isConfirmed) {
+        await Swal.fire('Berhasil', updateResult.value.message, 'success');
+        await loadAdminMembers();
+    }
 }
 
 function escapeHtml(value) {
@@ -1090,27 +1687,27 @@ function downloadMemberImportTemplate() {
     URL.revokeObjectURL(url);
 }
 
-async function activateAdminMember(userId) {
+async function activateTellerMember(userId) {
     const result = await Swal.fire({
         title: 'Buat Akun Saver',
         html: `
             <div class="space-y-3 text-left">
-                <label class="block text-sm font-semibold text-slate-700" for="admin-member-username">Username siswa</label>
-                <input id="admin-member-username" type="text" maxlength="50" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                <label class="block text-sm font-semibold text-slate-700" for="admin-member-email">Email nasabah untuk OTP (opsional)</label>
-                <input id="admin-member-email" type="email" maxlength="255" class="w-full rounded-lg border border-slate-300 px-3 py-2" autocomplete="email">
-                <label class="block text-sm font-semibold text-slate-700" for="admin-member-password">Password</label>
+                <label class="block text-sm font-semibold text-slate-700" for="teller-member-username">Username siswa</label>
+                <input id="teller-member-username" type="text" maxlength="50" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <label class="block text-sm font-semibold text-slate-700" for="teller-member-email">Email nasabah untuk OTP (opsional)</label>
+                <input id="teller-member-email" type="email" maxlength="255" class="w-full rounded-lg border border-slate-300 px-3 py-2" autocomplete="email">
+                <label class="block text-sm font-semibold text-slate-700" for="teller-member-password">Password</label>
                 <div class="relative">
-                    <input id="admin-member-password" type="password" minlength="8" maxlength="100" class="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10" autocomplete="new-password">
-                    <button type="button" onclick="toggleCredentialVisibility('admin-member-password', this)" aria-label="Lihat password" title="Lihat password" class="absolute inset-y-0 right-0 px-3 text-slate-500"><i class="fa-solid fa-eye"></i></button>
+                    <input id="teller-member-password" type="password" minlength="8" maxlength="100" class="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10" autocomplete="new-password">
+                    <button type="button" onclick="toggleCredentialVisibility('teller-member-password', this)" aria-label="Lihat password" title="Lihat password" class="absolute inset-y-0 right-0 px-3 text-slate-500"><i class="fa-solid fa-eye"></i></button>
                 </div>
-                <label class="block text-sm font-semibold text-slate-700" for="admin-member-pin">PIN keamanan nasabah (6 digit)</label>
+                <label class="block text-sm font-semibold text-slate-700" for="teller-member-pin">PIN keamanan nasabah (6 digit)</label>
                 <div class="relative">
-                    <input id="admin-member-pin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" class="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10" autocomplete="new-password">
-                    <button type="button" onclick="toggleCredentialVisibility('admin-member-pin', this)" aria-label="Lihat PIN" title="Lihat PIN" class="absolute inset-y-0 right-0 px-3 text-slate-500"><i class="fa-solid fa-eye"></i></button>
+                    <input id="teller-member-pin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" class="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10" autocomplete="new-password">
+                    <button type="button" onclick="toggleCredentialVisibility('teller-member-pin', this)" aria-label="Lihat PIN" title="Lihat PIN" class="absolute inset-y-0 right-0 px-3 text-slate-500"><i class="fa-solid fa-eye"></i></button>
                 </div>
-                <label class="block text-sm font-semibold text-slate-700" for="admin-member-opening-balance">Saldo awal (Rp)</label>
-                <input id="admin-member-opening-balance" type="number" min="0" step="1000" value="0" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <label class="block text-sm font-semibold text-slate-700" for="teller-member-opening-balance">Saldo awal (Rp)</label>
+                <input id="teller-member-opening-balance" type="number" min="0" step="1000" value="0" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
                 <p class="text-xs text-slate-500">Saldo awal di atas Rp 0 akan dicatat sebagai setoran pembukaan dan masuk ke jurnal.</p>
             </div>
         `,
@@ -1118,11 +1715,11 @@ async function activateAdminMember(userId) {
         confirmButtonText: 'Buat Akun',
         cancelButtonText: 'Batal',
         preConfirm: () => {
-            const username = document.getElementById('admin-member-username').value.trim();
-            const email = document.getElementById('admin-member-email').value.trim();
-            const password = document.getElementById('admin-member-password').value;
-            const security_pin = document.getElementById('admin-member-pin').value.trim();
-            const saldo_awal = document.getElementById('admin-member-opening-balance').value;
+            const username = document.getElementById('teller-member-username').value.trim();
+            const email = document.getElementById('teller-member-email').value.trim();
+            const password = document.getElementById('teller-member-password').value;
+            const security_pin = document.getElementById('teller-member-pin').value.trim();
+            const saldo_awal = document.getElementById('teller-member-opening-balance').value;
             if (!username || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || password.length < 8 || !/^\d{6}$/.test(security_pin) || saldo_awal === '' || !Number.isSafeInteger(Number(saldo_awal)) || Number(saldo_awal) < 0) {
                 Swal.showValidationMessage('Isi username, email yang valid jika digunakan, password minimal 8 karakter, PIN keamanan 6 digit, dan saldo awal berupa angka minimal Rp 0.');
                 return false;
@@ -1134,12 +1731,9 @@ async function activateAdminMember(userId) {
     if (!result.isConfirmed) return;
 
     try {
-        const response = await apiCall(`/admin/members/${userId}/activate`, 'POST', result.value);
-        if (Auth.getRole() === 'admin') {
-            switchAdminTab('savers');
-        } else {
-            switchSpvTab('nasabah');
-        }
+        const response = await apiCall(`/teller/members/${userId}/activate`, 'POST', result.value);
+        await loadTellerSavers();
+        await loadTellerMembers();
         await Swal.fire(
             'Akun Saver Dibuat',
             `Akun untuk ${response.data.nama_siswa} sudah aktif. Username: ${response.data.username}; nomor rekening: ${response.data.no_rekening}; saldo awal: ${formatRupiah(response.data.saldo_awal)}.`,
@@ -1164,7 +1758,7 @@ async function toggleSaverStatus(saverId, isActive) {
 async function deleteSaver(saverId, namaSiswa) {
     const result = await Swal.fire({
         title: 'Hapus akun Saver?',
-        html: `Akun <strong>${escapeHtml(namaSiswa)}</strong> akan dihapus dari daftar aktif dan login akan dinonaktifkan. Data rekening serta seluruh riwayat transaksi tetap disimpan untuk audit.`,
+        html: `Akun <strong>${escapeHtml(namaSiswa)}</strong> akan dihapus dari daftar aktif dan login akan dinonaktifkan. Akun hanya dapat dihapus jika saldonya sudah ditarik habis (saldo 0). Data rekening serta seluruh riwayat transaksi tetap disimpan untuk audit.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc2626',
@@ -1231,11 +1825,15 @@ async function setSaverCredentials(saverId) {
 
 async function editMember(userId) {
     try {
-        const response = await apiCall(`/admin/members/${userId}`);
+        const response = await apiCall(`${memberManagementEndpoint()}/${userId}`);
         openMemberModal(response.data);
     } catch (error) {
         Swal.fire('Gagal Memuat Anggota', error.message || 'Terjadi kesalahan sistem.', 'error');
     }
+}
+
+function memberManagementEndpoint() {
+    return Auth.getRole() === 'teller' ? '/teller/members' : '/admin/members';
 }
 
 function openMemberModal(member = null) {
@@ -1265,6 +1863,10 @@ function openMemberModal(member = null) {
                     </select>
                 </div>
                 <div>
+                    <label class="block font-bold text-slate-600 mb-1">Kelas</label>
+                    <input id="member-class" type="text" maxlength="20" value="${escapeHtml(member?.class || '')}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500" placeholder="Contoh: XI RPL 1">
+                </div>
+                <div>
                     <label class="block font-bold text-slate-600 mb-1">Angkatan Keluar</label>
                     <input id="member-graduation-year" type="number" min="2000" max="2100" value="${member?.graduation_year || new Date().getFullYear()}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500">
                 </div>
@@ -1279,6 +1881,7 @@ function openMemberModal(member = null) {
             const payload = {
                 student_number: document.getElementById('member-number').value.trim(),
                 student_name: document.getElementById('member-name').value.trim(),
+                class: document.getElementById('member-class').value.trim() || null,
                 nomor_hp: document.getElementById('member-phone').value.trim() || null,
                 gender: document.getElementById('member-gender').value || null,
                 graduation_year: Number(document.getElementById('member-graduation-year').value),
@@ -1289,7 +1892,7 @@ function openMemberModal(member = null) {
             }
 
             try {
-                return await apiCall(`/admin/members${editing ? `/${member.user_id}` : ''}`, editing ? 'PUT' : 'POST', payload);
+                return await apiCall(`${memberManagementEndpoint()}${editing ? `/${member.user_id}` : ''}`, editing ? 'PUT' : 'POST', payload);
             } catch (err) {
                 Swal.showValidationMessage(err.message || 'Gagal menyimpan anggota.');
                 return false;
@@ -1298,7 +1901,11 @@ function openMemberModal(member = null) {
     }).then((result) => {
         if (result.isConfirmed && result.value) {
             Swal.fire('Berhasil', editing ? 'Data anggota berhasil diperbarui.' : 'Anggota berhasil ditambahkan.', 'success');
-            loadAdminMembers();
+            if (Auth.getRole() === 'teller') {
+                loadTellerMembers();
+            } else {
+                loadAdminMembers();
+            }
         }
     });
 }
@@ -1316,14 +1923,24 @@ async function deleteMember(userId) {
     if (!confirmation.isConfirmed) return;
 
     try {
-        await apiCall(`/admin/members/${userId}`, 'DELETE');
-        await loadAdminMembers();
+        await apiCall(`${memberManagementEndpoint()}/${userId}`, 'DELETE');
+        if (Auth.getRole() === 'teller') {
+            await loadTellerMembers();
+        } else {
+            await loadAdminMembers();
+        }
         Swal.fire('Terhapus', 'Data anggota berhasil dihapus.', 'success');
     } catch (error) {
         Swal.fire('Gagal Menghapus', error.message || 'Terjadi kesalahan sistem.', 'error');
     }
 }
 
+// ============================================================================
+// [FITUR 13] KELOLA PENGGUNA STAF INTERNAL (Admin, Supervisor, Teller)
+// - Deskripsi : Menambah staf baru (role Teller / Supervisor), melihat daftar staf,
+//               dan menghapus user staf dengan tetap menjaga histori transaksi.
+// - Cari Cepat: FITUR_KELOLA_STAF
+// ============================================================================
 function openModalTambahUser() {
     Swal.fire({
         title: '<span class="text-lg font-bold text-slate-800">Tambah Pengguna Staf</span>',
@@ -1408,6 +2025,12 @@ function deleteUser(id) {
     });
 }
 
+// ============================================================================
+// [FITUR 14] KARTU DIGITAL & CETAK QR CODE NASABAH
+// - Deskripsi : Menampilkan kartu digital siswa dengan QR Code dinamis berbasis nomor
+//               rekening, unduh file gambar PNG QR, dan cetak kartu.
+// - Cari Cepat: FITUR_KARTU_DIGITAL_QR
+// ============================================================================
 function showKartuQR(noRekening, namaSiswa, kelas) {
     Swal.fire({
         title: '<span class="text-base font-bold text-slate-800">Kartu Digital Nasabah</span>',
@@ -1507,9 +2130,12 @@ function downloadQrCode(containerId, fileName) {
     });
 }
 
-// ----------------------------------------------------------------------------
-// 7. VIEW: DASHBOARD PIKET TELLER
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 15] VIEW: DASHBOARD LOKET TELLER
+// - Deskripsi : Tampilan utama loket Teller: panel pencarian nasabah, pemindai QR kamera,
+//               tab Setoran Tunai, tab Penarikan Tunai, dan panel Penutupan Kas Harian.
+// - Cari Cepat: FITUR_TELLER_LAYOUT
+// ============================================================================
 Views.TellerLayout = () => {
     const user = Auth.getUser();
     return `
@@ -1537,8 +2163,48 @@ Views.TellerLayout = () => {
                 </div>
             </header>
 
+            <nav class="mx-auto flex w-full max-w-7xl flex-wrap gap-2 px-4 pt-4 sm:px-6">
+                <button id="teller-nav-transactions" onclick="switchTellerPage('transactions')" class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white">
+                    <i class="fa-solid fa-cash-register mr-1"></i> Loket
+                </button>
+                <button id="teller-nav-members" onclick="switchTellerPage('members')" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-600">
+                    <i class="fa-solid fa-user-graduate mr-1"></i> Data Member
+                </button>
+                <button id="teller-nav-savers" onclick="switchTellerPage('savers')" class="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-600">
+                    <i class="fa-solid fa-piggy-bank mr-1"></i> Data Saver
+                </button>
+            </nav>
+
             <!-- MAIN TELLER WORKSPACE -->
-            <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <main id="teller-panel-transactions" class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <section class="lg:col-span-12 rounded-2xl border border-teal-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="font-bold text-slate-800">Modal Awal & Status Layanan</h3>
+                            <p id="teller-service-message" class="mt-1 text-xs text-slate-500">Masukkan modal awal kas untuk membuka layanan hari ini.</p>
+                        </div>
+                        <div class="flex justify-start sm:justify-end sm:ml-auto">
+                            <span id="teller-service-status-badge" class="inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-extrabold text-slate-700 bg-slate-100 border-slate-200">
+                                Status: <span id="teller-service-status-label" role="status" aria-live="polite" class="ml-1">Memuat...</span>
+                            </span>
+                        </div>
+                        <form id="form-teller-modal-awal" onsubmit="saveTellerOpeningCash(event)" class="flex flex-wrap items-end gap-2">
+                            <label class="text-xs font-semibold text-slate-600">Modal awal (Rp)
+                                <input id="input-teller-modal-awal" type="number" min="0" step="1" required class="mt-1 block w-48 rounded-lg border border-slate-300 px-3 py-2 font-mono">
+                            </label>
+                            <button type="submit" class="rounded-lg bg-teal-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-700">
+                                <i class="fa-solid fa-door-open mr-1"></i> Simpan & Buka
+                            </button>
+                        </form>
+                        <div id="teller-modal-awal-actions" class="hidden">
+                            <button id="btn-teller-service-toggle" type="button" onclick="toggleTellerService()" class="rounded-lg bg-amber-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-600">
+                                Istirahat
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <div id="teller-transaction-workspace" class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
                 <!-- KOLOM KIRI: SCANNER & PROFIL NASABAH (5 KOLOM) -->
                 <div class="lg:col-span-5 space-y-6">
@@ -1610,8 +2276,8 @@ Views.TellerLayout = () => {
                         <div class="p-6">
                             <div class="mb-4 flex items-center justify-between gap-3 p-3.5 bg-teal-50 border border-teal-200 rounded-xl text-xs">
                                 <div>
-                                    <strong class="block text-teal-800">Modal awal kas hari ini</strong>
-                                    <p class="text-teal-700 mt-0.5">Informasi modal awal yang dikonfirmasi saat login.</p>
+                                    <strong class="block text-teal-800">Sisa Kas Tersedia</strong>
+                                    <p class="text-teal-700 mt-0.5">Modal awal + setoran - penarikan tunai hari ini.</p>
                                 </div>
                                 <strong id="teller-modal-awal-status" role="status" aria-live="polite" class="font-mono font-extrabold text-teal-900">Memuat modal awal...</strong>
                             </div>
@@ -1697,6 +2363,7 @@ Views.TellerLayout = () => {
                         </div>
                     </div>
                 </div>
+                </div>
                 <section class="lg:col-span-12 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                         <div>
@@ -1723,18 +2390,78 @@ Views.TellerLayout = () => {
                     </div>
                 </section>
             </main>
+
+            <main id="teller-panel-members" class="hidden flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+                <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-800">Data Member</h3>
+                            <p class="text-xs text-slate-500">Lihat data member dan buat akun Saver untuk member yang sudah diimpor admin.</p>
+                        </div>
+                        <button id="btn-teller-member-service-toggle" type="button" onclick="toggleTellerService()" class="hidden rounded-lg bg-amber-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-600">
+                            Istirahat
+                        </button>
+                    </div>
+                    <input id="teller-member-search" type="search" oninput="searchTellerMembers()" placeholder="Cari berdasarkan NIS atau nama..."
+                        class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[900px] text-left text-xs">
+                            <thead class="border-b bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3">NIS</th><th class="px-4 py-3">Nama</th><th class="px-4 py-3">Kelas</th>
+                                    <th class="px-4 py-3">Angkatan Keluar</th><th class="px-4 py-3">Nomor HP</th><th class="px-4 py-3">Gender</th>
+                                    <th class="px-4 py-3">Status</th><th class="px-4 py-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-teller-members" class="divide-y divide-slate-100">
+                                <tr><td colspan="8" class="py-8 text-center text-slate-400">Memuat data Member...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+
+            <main id="teller-panel-savers" class="hidden flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+                <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">Data Saver</h3>
+                        <p class="text-xs text-slate-500">Akun Saver bertambah setelah Teller mengaktifkan Member.</p>
+                    </div>
+                    <input id="teller-saver-search" type="search" oninput="searchTellerSavers()" placeholder="Cari nama, NIS, atau nomor rekening..."
+                        class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[900px] text-left text-xs">
+                            <thead class="border-b bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3">No. Rekening</th><th class="px-4 py-3">NIS</th><th class="px-4 py-3">Nama</th>
+                                    <th class="px-4 py-3">Kelas</th><th class="px-4 py-3">Username</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Saldo</th><th class="px-4 py-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-teller-savers" class="divide-y divide-slate-100">
+                                <tr><td colspan="8" class="py-8 text-center text-slate-400">Memuat data Saver...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
         </div>
     `;
 };
 
-// ----------------------------------------------------------------------------
-// HANDLER & EVENT LOGIC: PIKET TELLER
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 16] TELLER: INISIALISASI & NAVIGASI LOKET
+// - Deskripsi : Inisialisasi event teller, cek modal awal hari ini, load riwayat kas,
+//               dan navigasi antar tab (Transaksi, Member, Saver).
+// - Cari Cepat: FITUR_TELLER_NAVIGASI
+// ============================================================================
 let currentNasabahAktif = null;
 let html5QrScanner = null;
 let cameraScannerBusy = false;
 let cameraScanHandled = false;
 let currentCashClosureSummary = null;
+let currentTellerServiceStatus = 'not_started';
+let tellerMemberSearchTimeout;
+let tellerSaverSearchTimeout;
 
 function initTellerEvents() {
     currentNasabahAktif = null;
@@ -1746,17 +2473,216 @@ function initTellerEvents() {
     loadTellerCashHistory();
 }
 
+function switchTellerPage(page) {
+    const pages = {
+        transactions: document.getElementById('teller-panel-transactions'),
+        members: document.getElementById('teller-panel-members'),
+        savers: document.getElementById('teller-panel-savers'),
+    };
+    if (!pages[page]) return;
+
+    Object.entries(pages).forEach(([name, element]) => {
+        element.classList.toggle('hidden', name !== page);
+        const button = document.getElementById(`teller-nav-${name}`);
+        button.className = name === page
+            ? 'rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white'
+            : 'rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-600';
+    });
+
+    if (page === 'members') loadTellerMembers();
+    if (page === 'savers') loadTellerSavers();
+}
+
 async function loadModalAwalKas() {
     try {
         const res = await apiCall('/teller/modal-awal');
+        const data = res.data;
         const status = document.getElementById('teller-modal-awal-status');
         if (!status) return;
-        status.textContent = res.data.sudah_diatur
-            ? formatRupiah(res.data.nominal)
-            : 'Belum diatur';
+        currentTellerServiceStatus = data.status_layanan;
+        status.textContent = data.sudah_diatur ? formatRupiah(data.sisa_modal ?? data.nominal) : 'Belum diatur';
+
+        const form = document.getElementById('form-teller-modal-awal');
+        const input = document.getElementById('input-teller-modal-awal');
+        const actions = document.getElementById('teller-modal-awal-actions');
+        const toggle = document.getElementById('btn-teller-service-toggle');
+        const memberToggle = document.getElementById('btn-teller-member-service-toggle');
+        const label = document.getElementById('teller-service-status-label');
+        const statusBadge = document.getElementById('teller-service-status-badge');
+        const message = document.getElementById('teller-service-message');
+        const workspace = document.getElementById('teller-transaction-workspace');
+        const closed = data.status_layanan === 'closed';
+        const supportsServiceStatus = data.supports_service_status !== false;
+        const statusStyles = {
+            open: 'border-emerald-200 bg-emerald-100 text-emerald-800',
+            resting: 'border-orange-200 bg-orange-100 text-orange-800',
+            closed: 'border-red-200 bg-red-100 text-red-800',
+            not_started: 'border-slate-200 bg-slate-100 text-slate-700',
+        };
+
+        form?.classList.toggle('hidden', data.sudah_diatur || closed);
+        if (input && data.sudah_diatur) input.value = data.nominal;
+        actions?.classList.toggle('hidden', !data.sudah_diatur || closed || !supportsServiceStatus);
+        [toggle, memberToggle].forEach(button => {
+            if (!button) return;
+            button.classList.toggle('hidden', !data.sudah_diatur || closed || !supportsServiceStatus);
+            button.textContent = data.status_layanan === 'resting' ? 'Mulai Layanan' : 'Istirahat';
+            button.className = `${button.className.replace(/\b(?:bg-amber-500|hover:bg-amber-600|bg-emerald-600|hover:bg-emerald-700)\b/g, '').trim()} ${
+                data.status_layanan === 'resting'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-amber-500 hover:bg-amber-600'
+            }`;
+        });
+        const labels = {
+            not_started: 'Belum Buka',
+            open: 'Buka',
+            resting: 'Istirahat',
+            closed: 'Tutup',
+        };
+        const serviceStatus = data.status_layanan || 'not_started';
+        if (label) label.textContent = labels[serviceStatus] || 'Belum Buka';
+        if (statusBadge) {
+            statusBadge.className = `inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-extrabold ${statusStyles[serviceStatus] || statusStyles.not_started}`;
+        }
+        if (message) {
+            message.textContent = data.status_layanan === 'open'
+                ? supportsServiceStatus
+                    ? 'Layanan teller aktif. Anda dapat menerima transaksi.'
+                    : 'Layanan aktif. Perbarui struktur database untuk mengaktifkan tombol istirahat.'
+                : data.status_layanan === 'resting'
+                    ? 'Layanan teller sedang istirahat. Transaksi dinonaktifkan sampai layanan dimulai kembali.'
+                    : closed
+                        ? 'Kas hari ini sudah ditutup dan diserahkan.'
+                        : 'Masukkan modal awal kas untuk membuka layanan hari ini.';
+        }
+        workspace?.classList.toggle('hidden', data.status_layanan !== 'open');
     } catch (error) {
         console.error(error);
+        const label = document.getElementById('teller-service-status-label');
+        if (label) label.textContent = error.message || 'Status tidak dapat dimuat';
     }
+}
+
+async function saveTellerOpeningCash(event) {
+    event.preventDefault();
+    const nominal = Number(document.getElementById('input-teller-modal-awal').value);
+    if (!Number.isSafeInteger(nominal) || nominal < 0) {
+        await Swal.fire('Nominal Tidak Valid', 'Masukkan modal awal berupa angka bulat minimal Rp 0.', 'warning');
+        return;
+    }
+
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+        const response = await apiCall('/teller/modal-awal', 'POST', { nominal });
+        await Swal.fire('Layanan Dibuka', response.message, 'success');
+        await loadModalAwalKas();
+        await loadSummaryPenutupanToday();
+    } catch (error) {
+        await Swal.fire('Gagal Membuka Layanan', error.message || 'Modal awal tidak dapat disimpan.', 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function toggleTellerService() {
+    const nextStatus = currentTellerServiceStatus === 'resting' ? 'open' : 'resting';
+    const buttons = [
+        document.getElementById('btn-teller-service-toggle'),
+        document.getElementById('btn-teller-member-service-toggle')
+    ].filter(Boolean);
+    buttons.forEach(button => button.disabled = true);
+    try {
+        const response = await apiCall('/teller/layanan/status', 'PATCH', { status: nextStatus });
+        await loadModalAwalKas();
+        await Swal.fire(nextStatus === 'resting' ? 'Istirahat' : 'Layanan Dibuka', response.message, 'success');
+    } catch (error) {
+        await Swal.fire('Status Layanan Gagal Diubah', error.message || 'Silakan coba lagi.', 'error');
+    } finally {
+        buttons.forEach(button => button.disabled = false);
+    }
+}
+
+// ============================================================================
+// [FITUR 17] TELLER: PENCARIAN & PEMILIHAN NASABAH (Cari Member & Saver)
+// - Deskripsi : Mencari nasabah secara instan berdasarkan nomor rekening, NIS,
+//               atau nama siswa untuk dimasukkan ke form transaksi kas.
+// - Cari Cepat: FITUR_TELLER_CARI_NASABAH
+// ============================================================================
+function searchTellerMembers() {
+    clearTimeout(tellerMemberSearchTimeout);
+    tellerMemberSearchTimeout = setTimeout(loadTellerMembers, 250);
+}
+
+async function loadTellerSavers() {
+    const tbody = document.getElementById('tbody-teller-savers');
+    if (!tbody) return;
+
+    try {
+        const response = await apiCall('/teller/savers');
+        const query = document.getElementById('teller-saver-search')?.value.trim().toLowerCase() || '';
+        const savers = (response.data || []).filter(item =>
+            [item.no_rekening, item.nis, item.nama_siswa].some(value => String(value || '').toLowerCase().includes(query))
+        );
+        if (!savers.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-400">${query ? 'Saver tidak ditemukan.' : 'Belum ada data Saver.'}</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = savers.map(item => `
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3 font-mono">${escapeHtml(item.no_rekening || 'Belum ada rekening')}</td>
+                <td class="px-4 py-3 font-mono">${escapeHtml(item.nis)}</td>
+                <td class="px-4 py-3 font-semibold">${escapeHtml(item.nama_siswa)}</td>
+                <td class="px-4 py-3">${escapeHtml(item.kelas || '-')}</td>
+                <td class="px-4 py-3">${escapeHtml(item.username || '-')}</td>
+                <td class="px-4 py-3">${!item.has_login ? 'Belum ada login' : item.is_active ? 'Aktif' : 'Nonaktif'}</td>
+                <td class="px-4 py-3 text-right font-mono font-bold">${formatRupiah(item.saldo)}</td>
+                <td class="px-4 py-3 text-center">${item.closure_pending
+                    ? '<span class="whitespace-nowrap rounded-lg bg-amber-100 px-3 py-1.5 text-[10px] font-bold text-amber-800">Menunggu ACC Admin</span>'
+                    : `<button type="button" data-saver-id="${item.id}" data-saver-name="${escapeHtml(item.nama_siswa)}" data-saver-balance="${Number(item.saldo) || 0}" onclick="closeTellerSaverAccount(this.dataset.saverId, this.dataset.saverName, Number(this.dataset.saverBalance))" class="whitespace-nowrap rounded-lg px-3 py-1.5 text-[10px] font-bold ${Number(item.saldo) > 0 ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}">${Number(item.saldo) > 0 ? 'Tarik & Ajukan Hapus' : 'Ajukan Hapus'}</button>`}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-red-600">${escapeHtml(error.message || 'Data Saver gagal dimuat.')}</td></tr>`;
+    }
+}
+
+async function closeTellerSaverAccount(saverId, namaSiswa, saldo) {
+    const perluTarik = saldo > 0;
+    const result = await Swal.fire({
+        title: perluTarik ? 'Tarik semua saldo & ajukan penghapusan?' : 'Ajukan penghapusan akun Saver?',
+        html: `<div class="space-y-2 text-left"><p>Pengajuan penutupan akun <strong>${escapeHtml(namaSiswa)}</strong> akan dikirim ke Admin.</p>${perluTarik ? `<p>Seluruh saldo <strong>${formatRupiah(saldo)}</strong> akan ditarik sebagai transaksi Teller. Saldo mengendap Rp10.000 hanya dikecualikan untuk penutupan akun ini.</p>` : '<p>Saldo rekening saat ini Rp0.</p>'}<p>Akun tetap tersimpan sampai Admin menyetujui penghapusannya.</p><label for="close-saver-pin" class="mt-3 block text-sm font-semibold">PIN keamanan nasabah (6 digit)</label><input id="close-saver-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="swal2-input" placeholder="Masukkan PIN"></div>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: perluTarik ? 'Tarik & Ajukan' : 'Ajukan Penghapusan',
+        cancelButtonText: 'Batal',
+        preConfirm: () => {
+            const pin = document.getElementById('close-saver-pin')?.value.trim() || '';
+            if (!/^\d{6}$/.test(pin)) {
+                Swal.showValidationMessage('PIN nasabah harus terdiri dari 6 digit.');
+                return false;
+            }
+            return { pin_keamanan: pin };
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await apiCall(`/teller/savers/${saverId}/close-account`, 'POST', result.value);
+        await loadTellerSavers();
+        await loadModalAwalKas();
+        await Swal.fire('Pengajuan Dikirim', `${response.message}${response.data.saldo_ditarik > 0 ? ` Jumlah penarikan: ${formatRupiah(response.data.saldo_ditarik)}.` : ''}`, 'success');
+    } catch (error) {
+        await Swal.fire('Penutupan Akun Gagal', error.message || 'Akun tidak berhasil ditutup.', 'error');
+    }
+}
+
+function searchTellerSavers() {
+    clearTimeout(tellerSaverSearchTimeout);
+    tellerSaverSearchTimeout = setTimeout(loadTellerSavers, 250);
 }
 
 async function loadTellerCashHistory() {
@@ -1815,6 +2741,12 @@ function switchTellerAction(action) {
     }
 }
 
+// ============================================================================
+// [FITUR 18] TELLER: PEMINDAI QR CODE (Webcam & Upload File Foto QR)
+// - Deskripsi : Mengaktifkan kamera scanner HTML5-QRCode, menangani izin browser,
+//               membaca barcode gambar QR, dan mengurai nomor rekening nasabah.
+// - Cari Cepat: FITUR_TELLER_SCAN_QR_KAMERA
+// ============================================================================
 function setCameraScannerStatus(message, isError = false) {
     const status = document.getElementById('scanner-status');
     if (!status) return;
@@ -2020,6 +2952,12 @@ async function cariNasabahTeller(queryValue = null) {
     }
 }
 
+// ============================================================================
+// [FITUR 19] TELLER: KARTU PROFIL & INFORMASI SALDO NASABAH
+// - Deskripsi : Menampilkan kartu profil nasabah terpilih di loket teller
+//               (nama, NIS, no rekening, saldo berjalan, saldo yang bisa ditarik).
+// - Cari Cepat: FITUR_TELLER_PROFIL_NASABAH
+// ============================================================================
 function renderProfilNasabah(data) {
     const setoranInput = document.getElementById('input-setor-nominal');
     const depositButton = document.getElementById('btn-proses-setor');
@@ -2067,6 +3005,12 @@ function renderProfilNasabah(data) {
     `;
 }
 
+// ============================================================================
+// [FITUR 20] TELLER: TRANSAKSI SETORAN & PENARIKAN TUNAI
+// - Deskripsi : Memproses setoran tunai (min Rp 1.000) dan penarikan tunai
+//               dengan otorisasi PIN 6-digit serta proteksi saldo mengendap Rp 10.000.
+// - Cari Cepat: FITUR_TELLER_TRANSAKSI_SETOR_TARIK
+// ============================================================================
 async function handleProsesSetoran(e) {
     e.preventDefault();
     if (!currentNasabahAktif) {
@@ -2090,6 +3034,7 @@ async function handleProsesSetoran(e) {
 
         document.getElementById('input-setor-nominal').value = '';
         await cariNasabahTeller(res.data.no_rekening);
+        await loadModalAwalKas();
         tampilkanStrukTransaksi(res.data);
     } catch (err) {
         Swal.fire('Gagal Setor', err.message || 'Terjadi kesalahan sistem.', 'error');
@@ -2124,6 +3069,7 @@ async function handleProsesPenarikan(e) {
         document.getElementById('input-tarik-nominal').value = '';
         document.getElementById('input-tarik-pin').value = '';
         await cariNasabahTeller(res.data.no_rekening);
+        await loadModalAwalKas();
         tampilkanStrukTransaksi(res.data);
     } catch (err) {
         Swal.fire('Penarikan Gagal', err.message || 'PIN salah atau saldo tidak mencukupi.', 'error');
@@ -2132,6 +3078,12 @@ async function handleProsesPenarikan(e) {
     }
 }
 
+// ============================================================================
+// [FITUR 21] TELLER: PENUTUPAN KAS HARIAN (CLOSING KAS LOKET)
+// - Deskripsi : Menghitung saldo awal + setoran - penarikan = saldo akhir sistem,
+//               membandingkan uang fisik di laci dengan sistem, dan submit closing kas.
+// - Cari Cepat: FITUR_TELLER_CLOSING_KAS
+// ============================================================================
 async function loadSummaryPenutupanToday() {
     try {
         const res = await apiCall('/teller/penutupan-kas/summary-today');
@@ -2233,6 +3185,7 @@ async function handlePenutupanKasSubmit(e) {
         }).then(() => {
             document.getElementById('penutupan-uang-fisik').value = '';
             document.getElementById('penutupan-catatan').value = '';
+            loadModalAwalKas();
             loadSummaryPenutupanToday();
             loadTellerCashHistory();
             switchTellerAction('setor');
@@ -2242,6 +3195,12 @@ async function handlePenutupanKasSubmit(e) {
     }
 }
 
+// ============================================================================
+// [FITUR 22] TELLER: CETAK STRUK TRANSAKSI (Modal Struk & Format Termal)
+// - Deskripsi : Menampilkan popup struk transaksi berhasil dan format cetak
+//               kertas kasir termal (58mm/80mm) yang siap dicetak ke printer.
+// - Cari Cepat: FITUR_TELLER_CETAK_STRUK
+// ============================================================================
 function tampilkanStrukTransaksi(data) {
     const isSetoran = data.jenis_transaksi === 'SETORAN TUNAI';
     const statusLabel = isSetoran ? 'SETORAN BERHASIL' : 'PENARIKAN BERHASIL';
@@ -2355,9 +3314,12 @@ function cetakStrukThermal(data) {
     printPage('receipt', () => printArea.replaceChildren());
 }
 
-// ----------------------------------------------------------------------------
-// 8. VIEW: DASHBOARD SUPERVISOR
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 23] VIEW: DASHBOARD SUPERVISOR & ADMIN
+// - Deskripsi : Tata letak portal pengelola bank mini: tab Approval Penutupan Kas,
+//               tab Audit Jurnal Akuntansi, tab Laporan Transaksi, Data Saver, & Member.
+// - Cari Cepat: FITUR_SUPERVISOR_LAYOUT
+// ============================================================================
 Views.SupervisorLayout = () => {
     const user = Auth.getUser();
     const memberActions = memberImportPanel();
@@ -2467,6 +3429,45 @@ Views.SupervisorLayout = () => {
                 </div>
 
                 <div id="spv-sec-laporan" class="space-y-4 hidden">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-filter mr-1"></i> Filter Rekap Riwayat Transaksi</h3>
+                        <p class="text-xs text-slate-500 mt-1 mb-3">Rekap semua transaksi, harian (pilih tanggal), atau bulanan (bulan + tahun), dan riwayat per nasabah.</p>
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-xs font-semibold text-slate-600">Mode
+                                <select id="spv-laporan-mode" onchange="onSpvLaporanModeChange()" class="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                    <option value="semua">Semua Transaksi</option>
+                                    <option value="harian">Harian (per tanggal)</option>
+                                    <option value="bulanan">Bulanan (bulan + tahun)</option>
+                                </select>
+                            </label>
+                            <label id="spv-laporan-wrap-tanggal" class="text-xs font-semibold text-slate-600 hidden">Tanggal
+                                <input id="spv-laporan-tanggal" type="date" class="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                            </label>
+                            <label id="spv-laporan-wrap-bulan" class="text-xs font-semibold text-slate-600 hidden">Bulan
+                                <select id="spv-laporan-bulan" class="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                    ${Array.from({ length: 12 }, (_, index) => `<option value="${index + 1}" ${index + 1 === new Date().getMonth() + 1 ? 'selected' : ''}>${new Date(2000, index).toLocaleString('id-ID', { month: 'long' })}</option>`).join('')}
+                                </select>
+                            </label>
+                            <label id="spv-laporan-wrap-tahun" class="text-xs font-semibold text-slate-600 hidden">Tahun
+                                <input id="spv-laporan-tahun" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" class="mt-1 block w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                            </label>
+                            <div class="relative w-full sm:w-72">
+                                <label for="spv-laporan-nasabah-search" class="text-xs font-semibold text-slate-600">Nasabah</label>
+                                <input id="spv-laporan-nasabah-search" type="search" autocomplete="off"
+                                    oninput="searchSpvLaporanNasabah()" onblur="hideSpvLaporanNasabahResults()"
+                                    placeholder="Ketik nama atau nomor rekening..."
+                                    class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                <input id="spv-laporan-nasabah" type="hidden" value="">
+                                <div id="spv-laporan-nasabah-results" class="absolute left-0 right-0 top-full z-40 mt-1 hidden max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"></div>
+                            </div>
+                            <button onclick="loadSpvLaporanTransaksi()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow transition">
+                                <i class="fa-solid fa-magnifying-glass"></i> Terapkan
+                            </button>
+                            <button onclick="downloadSpvLaporanTransaksiPdf()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg shadow transition">
+                                <i class="fa-solid fa-file-pdf"></i> Unduh PDF
+                            </button>
+                        </div>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
                             <span class="text-xs font-bold uppercase text-emerald-700">Total Penyetoran Teller</span>
@@ -2650,9 +3651,12 @@ Views.SupervisorLayout = () => {
     `;
 };
 
-// ----------------------------------------------------------------------------
-// HANDLER & EVENT LOGIC: SUPERVISOR
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 24] SUPERVISOR: INISIALISASI & NAVIGASI TAB PENGELOLA
+// - Deskripsi : Navigasi antar tab supervisor (Approval Kas, Audit Jurnal,
+//               Laporan Transaksi, Data Saver, Data Member, Akun Staf).
+// - Cari Cepat: FITUR_SUPERVISOR_NAVIGASI
+// ============================================================================
 function initSupervisorEvents() {
     loadSpvPenutupan();
 }
@@ -2681,9 +3685,46 @@ function switchSpvTab(tab) {
     tabs[tab]();
 }
 
+// ============================================================================
+// [FITUR 25] SUPERVISOR: LAPORAN REKAPITULASI TRANSAKSI
+// - Deskripsi : Memuat seluruh riwayat transaksi setoran dan penarikan kas
+//               beserta kalkulasi total uang masuk dan uang keluar.
+// - Cari Cepat: FITUR_SUPERVISOR_LAPORAN
+// ============================================================================
 async function loadSpvLaporanTransaksi() {
     try {
-        const res = await apiCall('/supervisor/laporan-transaksi');
+        const mode = document.getElementById('spv-laporan-mode')?.value || 'semua';
+        const nasabahId = document.getElementById('spv-laporan-nasabah')?.value || '';
+        const nasabahSearch = document.getElementById('spv-laporan-nasabah-search')?.value.trim() || '';
+        if (nasabahSearch && !nasabahId) {
+            await Swal.fire('Pilih Nasabah', 'Pilih nama atau nomor rekening dari hasil pencarian terlebih dahulu.', 'warning');
+            return;
+        }
+        const params = new URLSearchParams();
+        if (mode === 'harian') {
+            const tanggal = document.getElementById('spv-laporan-tanggal')?.value || '';
+            if (!tanggal) {
+                await Swal.fire('Tanggal Wajib', 'Pilih tanggal untuk rekap harian.', 'warning');
+                return;
+            }
+            params.set('tanggal', tanggal);
+        } else if (mode === 'bulanan') {
+            const bulan = document.getElementById('spv-laporan-bulan')?.value || '';
+            const tahun = document.getElementById('spv-laporan-tahun')?.value || '';
+            if (!bulan || !tahun || Number(tahun) < 2000 || Number(tahun) > 2100) {
+                await Swal.fire('Periode Tidak Valid', 'Pilih bulan dan tahun antara 2000 sampai 2100.', 'warning');
+                return;
+            }
+            params.set('bulan', bulan);
+            params.set('tahun', tahun);
+        }
+        if (nasabahId) params.set('nasabah_id', nasabahId);
+
+        const qs = params.toString();
+        const res = await apiCall(`/supervisor/laporan-transaksi${qs ? `?${qs}` : ''}`);
+
+        syncSpvLaporanNasabahOptions(res.nasabah_list || []);
+
         document.getElementById('spv-total-setoran').innerText = formatRupiah(res.summary.total_setoran);
         document.getElementById('spv-total-penarikan').innerText = formatRupiah(res.summary.total_penarikan);
         const buatBaris = item => `<tr class="hover:bg-slate-50"><td class="py-2.5 px-4 font-mono text-[10px]">${escapeHtml(formatDate(item.tanggal))}</td><td class="py-2.5 px-4"><strong>${escapeHtml(item.nasabah)}</strong><span class="block text-[10px] text-slate-400 font-mono">${escapeHtml(item.no_rekening)}</span></td><td class="py-2.5 px-4">${escapeHtml(item.teller)}</td><td class="py-2.5 px-4 text-right font-mono font-bold">${formatRupiah(item.nominal)}</td></tr>`;
@@ -2699,6 +3740,143 @@ async function loadSpvLaporanTransaksi() {
     }
 }
 
+async function downloadSpvLaporanTransaksiPdf() {
+    const mode = document.getElementById('spv-laporan-mode')?.value || 'semua';
+    const nasabahId = document.getElementById('spv-laporan-nasabah')?.value || '';
+    const nasabahSearch = document.getElementById('spv-laporan-nasabah-search')?.value.trim() || '';
+    if (nasabahSearch && !nasabahId) {
+        await Swal.fire('Pilih Nasabah', 'Pilih nama atau nomor rekening dari hasil pencarian terlebih dahulu.', 'warning');
+        return;
+    }
+
+    const params = new URLSearchParams();
+    let suffix = 'semua';
+    if (mode === 'harian') {
+        const tanggal = document.getElementById('spv-laporan-tanggal')?.value || '';
+        if (!tanggal) {
+            await Swal.fire('Tanggal Wajib', 'Pilih tanggal untuk rekap harian.', 'warning');
+            return;
+        }
+        params.set('tanggal', tanggal);
+        suffix = tanggal;
+    } else if (mode === 'bulanan') {
+        const bulan = document.getElementById('spv-laporan-bulan')?.value || '';
+        const tahun = document.getElementById('spv-laporan-tahun')?.value || '';
+        if (!bulan || !tahun || Number(tahun) < 2000 || Number(tahun) > 2100) {
+            await Swal.fire('Periode Tidak Valid', 'Pilih bulan dan tahun antara 2000 sampai 2100.', 'warning');
+            return;
+        }
+        params.set('bulan', bulan);
+        params.set('tahun', tahun);
+        suffix = `${tahun}-${String(bulan).padStart(2, '0')}`;
+    }
+    if (nasabahId) {
+        params.set('nasabah_id', nasabahId);
+        suffix += `-nasabah-${nasabahId}`;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/supervisor/laporan-transaksi/pdf?${params.toString()}`, {
+            headers: {
+                'Accept': 'application/pdf',
+                'Authorization': `Bearer ${Auth.getToken()}`,
+            },
+        });
+        if (!response.ok) {
+            let message = 'PDF rekap transaksi tidak dapat diunduh.';
+            try {
+                const error = await response.json();
+                message = error.message || message;
+            } catch (parseError) {
+                console.error('Gagal membaca respons error PDF:', parseError);
+            }
+            throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `rekap-transaksi-${suffix}.pdf`;
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (error) {
+        console.error(error);
+        await Swal.fire('Unduhan Gagal', error.message || 'PDF rekap transaksi tidak dapat diunduh.', 'error');
+    }
+}
+
+function onSpvLaporanModeChange() {
+    const mode = document.getElementById('spv-laporan-mode')?.value || 'semua';
+    document.getElementById('spv-laporan-wrap-tanggal')?.classList.toggle('hidden', mode !== 'harian');
+    document.getElementById('spv-laporan-wrap-bulan')?.classList.toggle('hidden', mode !== 'bulanan');
+    document.getElementById('spv-laporan-wrap-tahun')?.classList.toggle('hidden', mode !== 'bulanan');
+}
+
+function syncSpvLaporanNasabahOptions(nasabahList) {
+    spvLaporanNasabahList = Array.isArray(nasabahList) ? nasabahList : [];
+}
+
+function searchSpvLaporanNasabah() {
+    const input = document.getElementById('spv-laporan-nasabah-search');
+    const results = document.getElementById('spv-laporan-nasabah-results');
+    const selectedId = document.getElementById('spv-laporan-nasabah');
+    if (!input || !results || !selectedId) return;
+
+    selectedId.value = '';
+    const query = input.value.trim().toLocaleLowerCase('id-ID');
+    const matches = spvLaporanNasabahList.filter(item => {
+        const name = String(item.nama_siswa || '').toLocaleLowerCase('id-ID');
+        const account = String(item.no_rekening || '').toLocaleLowerCase('id-ID');
+        return !query || name.includes(query) || account.includes(query);
+    }).slice(0, 30);
+
+    const optionButton = (item, label) => `<button type="button" onmousedown="event.preventDefault()" onclick="selectSpvLaporanNasabah('${item ? item.id : ''}')" class="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50">${escapeHtml(label)}</button>`;
+    const allOption = optionButton(null, 'Semua Nasabah');
+    const saverOptions = matches.map(item => {
+        const account = item.no_rekening ? ` (${item.no_rekening})` : '';
+        const archived = item.is_archived ? ' (diarsipkan)' : '';
+        return optionButton(item, `${item.nama_siswa || 'Tanpa nama'}${account}${archived}`);
+    }).join('');
+    const emptyMessage = matches.length ? '' : '<p class="px-3 py-2 text-sm text-slate-500">Nasabah tidak ditemukan.</p>';
+    results.innerHTML = allOption + saverOptions + emptyMessage;
+    results.classList.remove('hidden');
+}
+
+function selectSpvLaporanNasabah(id) {
+    const selectedId = document.getElementById('spv-laporan-nasabah');
+    const input = document.getElementById('spv-laporan-nasabah-search');
+    const results = document.getElementById('spv-laporan-nasabah-results');
+    if (!selectedId || !input || !results) return;
+
+    selectedId.value = id;
+    if (!id) {
+        input.value = '';
+    } else {
+        const item = spvLaporanNasabahList.find(nasabah => String(nasabah.id) === String(id));
+        if (item) {
+            const account = item.no_rekening ? ` (${item.no_rekening})` : '';
+            const archived = item.is_archived ? ' (diarsipkan)' : '';
+            input.value = `${item.nama_siswa || 'Tanpa nama'}${account}${archived}`;
+        }
+    }
+    results.classList.add('hidden');
+}
+
+function hideSpvLaporanNasabahResults() {
+    setTimeout(() => document.getElementById('spv-laporan-nasabah-results')?.classList.add('hidden'), 120);
+}
+
+// ============================================================================
+// [FITUR 26] SUPERVISOR: APPROVAL, REJEKSI, & UNDUH PDF PENUTUPAN KAS
+// - Deskripsi : Memeriksa pengajuan penutupan kas harian Teller. Menyetujui jika seimbang,
+//               menolak dengan alasan jika selisih, serta mengunduh laporan PDF resmi.
+// - Cari Cepat: FITUR_SUPERVISOR_APPROVAL_REJEKSI_KAS
+// ============================================================================
 async function loadSpvPenutupan() {
     try {
         const res = await apiCall('/supervisor/penutupan-kas');
@@ -3007,6 +4185,12 @@ async function rejectPenutupan(id) {
     }
 }
 
+// ============================================================================
+// [FITUR 27] SUPERVISOR: AUDIT JURNAL AKUNTANSI (Double-Entry Balance)
+// - Deskripsi : Memeriksa pembukuan akuntansi ganda kas loket (101) vs tabungan (201),
+//               menghitung total debit dan kredit, serta menampilkan status neraca seimbang.
+// - Cari Cepat: FITUR_SUPERVISOR_AUDIT_JURNAL
+// ============================================================================
 async function loadSpvAuditJurnal() {
     try {
         const res = await apiCall('/supervisor/jurnal-akuntansi');
@@ -3047,9 +4231,12 @@ async function loadSpvAuditJurnal() {
     }
 }
 
-// ----------------------------------------------------------------------------
-// 9. VIEW: PORTAL NASABAH / SISWA (E-PASSBOOK)
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 28] VIEW: PORTAL NASABAH / SISWA (E-PASSBOOK)
+// - Deskripsi : Tata letak buku tabungan digital: kartu saldo, QR Code rekening,
+//               status operasional bank mini, dan riwayat mutasi 30 hari terakhir.
+// - Cari Cepat: FITUR_NASABAH_LAYOUT
+// ============================================================================
 Views.NasabahLayout = () => {
     const user = Auth.getUser();
     return `
@@ -3072,6 +4259,15 @@ Views.NasabahLayout = () => {
 
             <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 pb-28">
                 <section id="nasabah-panel-dashboard" class="space-y-6">
+                    <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Status Layanan Bank Mini</p>
+                            <p id="siswa-bank-status" role="status" aria-live="polite" class="mt-1 text-sm font-extrabold text-slate-600">Memeriksa status layanan...</p>
+                        </div>
+                        <button onclick="loadNasabahBankStatus()" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                            <i class="fa-solid fa-rotate mr-1"></i> Perbarui Status
+                        </button>
+                    </div>
                     <div class="bg-gradient-to-br from-teal-600 via-cyan-700 to-sky-900 rounded-3xl p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden">
                         <div class="flex justify-between items-start mb-6">
                             <div>
@@ -3170,12 +4366,17 @@ Views.NasabahLayout = () => {
     `;
 };
 
-// ----------------------------------------------------------------------------
-// HANDLER & EVENT LOGIC: NASABAH / SISWA
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 29] NASABAH: MUTASI TABUNGAN, SALDO, & CETAK BUKU
+// - Deskripsi : Memuat saldo berjalan, saldo mengendap, mutasi 30 hari terakhir,
+//               dan fungsi cetak riwayat transaksi buku tabungan.
+// - Cari Cepat: FITUR_NASABAH_MUTASI_PORTAL
+// ============================================================================
 let nasabahMutasi30Hari = [];
+let nasabahBankStatusInterval;
 
 function initNasabahEvents() {
+    if (nasabahBankStatusInterval) clearInterval(nasabahBankStatusInterval);
     const user = Auth.getUser();
     if (user && user.no_rekening) {
         new QRCode(document.getElementById('siswa-qr-container'), {
@@ -3191,6 +4392,29 @@ function initNasabahEvents() {
         });
     }
     loadNasabahPortal();
+    loadNasabahBankStatus();
+    nasabahBankStatusInterval = setInterval(loadNasabahBankStatus, 60000);
+}
+
+async function loadNasabahBankStatus() {
+    const element = document.getElementById('siswa-bank-status');
+    if (!element) return;
+
+    try {
+        const response = await apiCall('/public/bank-status');
+        const status = response.data.status;
+        const styles = {
+            open: 'text-emerald-700',
+            resting: 'text-amber-700',
+            closed: 'text-slate-600',
+        };
+        element.className = `mt-1 text-sm font-extrabold ${styles[status] || 'text-slate-600'}`;
+        element.textContent = `${response.data.status_label || 'Tutup'}${response.data.active_tellers ? ` · ${response.data.active_tellers} teller siap` : ''}${response.data.resting_tellers ? ` · ${response.data.resting_tellers} istirahat` : ''}`;
+    } catch (error) {
+        element.className = 'mt-1 text-sm font-bold text-red-600';
+        element.textContent = 'Status layanan tidak dapat dimuat. Coba perbarui kembali.';
+        console.error('Gagal memuat status layanan Bank Mini:', error);
+    }
 }
 
 async function loadNasabahPortal() {
@@ -3311,6 +4535,12 @@ function printNasabahTransactions() {
     printPage('nasabah-history');
 }
 
+// ============================================================================
+// [FITUR 30] NASABAH: UBAH PASSWORD & PIN MANDIRI
+// - Deskripsi : Memungkinkan siswa mengubah kata sandi akun login dan PIN 6-digit
+//               transaksi mereka sendiri melalui modal SweetAlert2.
+// - Cari Cepat: FITUR_NASABAH_GANTI_PASSWORD_PIN
+// ============================================================================
 async function changeNasabahPassword() {
     const result = await Swal.fire({
         title: 'Ubah Kata Sandi',
@@ -3383,9 +4613,11 @@ async function changeNasabahPin() {
     }
 }
 
-// ----------------------------------------------------------------------------
-// 10. INISIALISASI APLIKASI SAAT HALAMAN SELESAI DIMUAT
-// ----------------------------------------------------------------------------
+// ============================================================================
+// [FITUR 31] INISIALISASI APLIKASI (DOM Ready Auto-Boot)
+// - Deskripsi : Memulai router utama saat seluruh halaman DOM selesai dimuat.
+// - Cari Cepat: FITUR_INIT_APLIKASI
+// ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
     Router.render();
 });

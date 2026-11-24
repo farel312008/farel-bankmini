@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" class="h-full bg-slate-50">
+<html lang="id" class="h-full bg-slate-50 scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -94,7 +94,7 @@
         }
     </style>
 </head>
-<body class="h-full font-sans text-slate-800 antialiased flex flex-col">
+<body class="min-h-full font-sans text-slate-800 antialiased flex flex-col">
 
     <!-- APP CONTAINER -->
     <div id="app" class="min-h-full flex flex-col flex-1">

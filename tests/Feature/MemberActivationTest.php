@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Nasabah;
+use App\Models\ModalAwalKas;
 use App\Models\Transaksi;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,134 @@ use Tests\TestCase;
 class MemberActivationTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function openTellerService(User $teller, int $openingCash = 0): void
+    {
+        ModalAwalKas::create([
+            'id_teller' => $teller->id,
+            'tanggal' => today(),
+            'nominal' => $openingCash,
+            'status_layanan' => 'open',
+        ]);
+    }
+
+    public function test_teller_service_status_transitions_and_blocks_transactions_during_breaks(): void
+    {
+        $teller = User::create([
+            'username' => 'teller-service',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller Service',
+            'role' => 'teller',
+        ]);
+        $saver = Nasabah::create([
+            'no_rekening' => 'REC20260030',
+            'nis' => 'STU030',
+            'nama_siswa' => 'Service Test Saver',
+            'jenis_kelamin' => 'Laki-laki',
+            'pin_keamanan' => '123456',
+        ]);
+
+        $this->getJson('/api/public/bank-status')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'closed')
+            ->assertJsonPath('data.status_label', 'Tutup');
+
+        Sanctum::actingAs($teller);
+        $this->getJson('/api/teller/modal-awal')
+            ->assertOk()
+            ->assertJsonPath('data.status_layanan', 'not_started');
+        $this->postJson('/api/teller/modal-awal', ['nominal' => 50000])
+            ->assertOk()
+            ->assertJsonPath('data.status_layanan', 'open');
+        $this->getJson('/api/public/bank-status')
+            ->assertJsonPath('data.status', 'open');
+
+        $this->patchJson('/api/teller/layanan/status', ['status' => 'resting'])
+            ->assertOk()
+            ->assertJsonPath('data.status_layanan', 'resting');
+        $this->getJson('/api/public/bank-status')
+            ->assertJsonPath('data.status', 'resting');
+        $this->postJson('/api/teller/transaksi/setor', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 1000,
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Layanan teller sedang istirahat. Mulai layanan kembali sebelum memproses transaksi.');
+
+        $this->patchJson('/api/teller/layanan/status', ['status' => 'open'])
+            ->assertOk();
+        $this->getJson('/api/public/bank-status')
+            ->assertJsonPath('data.status', 'open');
+
+        $this->postJson('/api/teller/penutupan-kas/submit', [
+            'saldo_awal' => 50000,
+            'uang_fisik' => 50000,
+        ])->assertCreated();
+        $this->getJson('/api/public/bank-status')
+            ->assertJsonPath('data.status', 'closed')
+            ->assertJsonPath('data.status_label', 'Tutup');
+    }
+
+    public function test_teller_dashboard_remains_available_before_service_status_migration(): void
+    {
+        Schema::table('modal_awal_kas', fn ($table) => $table->dropColumn('status_layanan'));
+
+        try {
+            $teller = User::create([
+                'username' => 'teller-legacy-schema',
+                'password' => 'secret123',
+                'nama_petugas' => 'Teller Legacy',
+                'role' => 'teller',
+            ]);
+            Sanctum::actingAs($teller);
+
+            $this->getJson('/api/teller/modal-awal')
+                ->assertOk()
+                ->assertJsonPath('data.supports_service_status', false)
+                ->assertJsonPath('data.status_layanan', 'not_started');
+            $this->postJson('/api/teller/modal-awal', ['nominal' => 25000])
+                ->assertOk()
+                ->assertJsonPath('data.status_layanan', 'open');
+            $this->getJson('/api/public/bank-status')
+                ->assertOk()
+                ->assertJsonPath('data.status', 'open');
+            $this->patchJson('/api/teller/layanan/status', ['status' => 'resting'])
+                ->assertStatus(503)
+                ->assertJsonPath('message', 'Fitur status istirahat belum tersedia. Perbarui struktur database melalui migration terbaru.');
+        } finally {
+            Schema::table('modal_awal_kas', fn ($table) => $table->string('status_layanan')->default('open'));
+        }
+    }
+
+    public function test_teller_can_access_member_and_saver_data_but_not_member_import(): void
+    {
+        Sanctum::actingAs(User::create([
+            'username' => 'admin-teller-data',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]));
+        $this->postJson('/api/admin/members', [
+            'student_number' => 'STU031',
+            'student_name' => 'Member Data Test',
+            'gender' => 'Perempuan',
+            'graduation_year' => 2027,
+        ])->assertCreated();
+
+        Sanctum::actingAs(User::create([
+            'username' => 'teller-data',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller Data',
+            'role' => 'teller',
+        ]));
+        $this->getJson('/api/teller/members')
+            ->assertOk()
+            ->assertJsonPath('data.0.student_number', 'STU031');
+        $this->getJson('/api/teller/savers')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->postJson('/api/teller/members/import')
+            ->assertMethodNotAllowed();
+    }
 
     public function test_admin_can_manage_members_and_their_linked_user_accounts(): void
     {
@@ -64,6 +193,126 @@ class MemberActivationTest extends TestCase
         $this->assertDatabaseMissing('users', ['id' => $userId]);
     }
 
+    public function test_admin_can_promote_members_by_graduation_year_without_changing_their_cohort(): void
+    {
+        Sanctum::actingAs(User::create([
+            'username' => 'admin-promotion',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]));
+
+        $members = [];
+        foreach ([
+            ['PROMOTE001', 'X RPL 1', 2028],
+            ['PROMOTE002', 'XI RPL 2', 2028],
+            ['PROMOTE003', 'XII RPL 3', 2028],
+            ['PROMOTE004', 'X RPL 4', 2029],
+        ] as [$studentNumber, $class, $graduationYear]) {
+            $response = $this->postJson('/api/admin/members', [
+                'student_number' => $studentNumber,
+                'student_name' => 'Student '.$studentNumber,
+                'class' => $class,
+                'graduation_year' => $graduationYear,
+            ])->assertCreated();
+            $members[$studentNumber] = $response->json('data.user_id');
+        }
+
+        $this->postJson('/api/admin/members/promote-by-graduation-year', [
+            'graduation_year' => 2028,
+        ])->assertOk()
+            ->assertJsonPath('data.promoted', 2)
+            ->assertJsonPath('data.already_graduating', 1)
+            ->assertJsonPath('data.graduation_year', 2028);
+
+        $this->assertDatabaseHas('members', [
+            'user_id' => $members['PROMOTE001'],
+            'class' => 'XI RPL 1',
+            'graduation_year' => 2028,
+        ]);
+        $this->assertDatabaseHas('members', [
+            'user_id' => $members['PROMOTE002'],
+            'class' => 'XII RPL 2',
+            'graduation_year' => 2028,
+        ]);
+        $this->assertDatabaseHas('members', [
+            'user_id' => $members['PROMOTE003'],
+            'class' => 'XII RPL 3',
+            'graduation_year' => 2028,
+        ]);
+        $this->assertDatabaseHas('members', [
+            'user_id' => $members['PROMOTE004'],
+            'class' => 'X RPL 4',
+            'graduation_year' => 2029,
+        ]);
+    }
+
+    public function test_admin_can_update_class_and_graduation_year_for_a_member_who_does_not_promote(): void
+    {
+        Sanctum::actingAs(User::create([
+            'username' => 'admin-reclassify',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]));
+
+        $member = $this->postJson('/api/admin/members', [
+            'student_number' => 'RECLASS001',
+            'student_name' => 'Student Reclassify',
+            'class' => 'X RPL 1',
+            'graduation_year' => 2028,
+        ])->assertCreated();
+        $userId = $member->json('data.user_id');
+
+        $this->patchJson("/api/admin/members/{$userId}/reclassify", [
+            'class' => 'XI RPL 2',
+            'graduation_year' => 2029,
+        ])->assertOk()
+            ->assertJsonPath('data.class', 'XI RPL 2')
+            ->assertJsonPath('data.graduation_year', 2029);
+
+        $this->assertDatabaseHas('members', [
+            'user_id' => $userId,
+            'class' => 'XI RPL 2',
+            'graduation_year' => 2029,
+        ]);
+    }
+
+    public function test_bulk_promotion_does_not_partially_update_a_cohort_with_an_unrecognized_class(): void
+    {
+        Sanctum::actingAs(User::create([
+            'username' => 'admin-invalid-promotion',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]));
+
+        $member = $this->postJson('/api/admin/members', [
+            'student_number' => 'PROMOTE006',
+            'student_name' => 'Student Valid Class',
+            'class' => 'X RPL 1',
+            'graduation_year' => 2028,
+        ])->assertCreated();
+        $userId = $member->json('data.user_id');
+        $this->postJson('/api/admin/members', [
+            'student_number' => 'PROMOTE007',
+            'student_name' => 'Student Unknown Class',
+            'class' => 'Tingkat X RPL',
+            'graduation_year' => 2028,
+        ])->assertCreated();
+
+        $this->postJson('/api/admin/members/promote-by-graduation-year', [
+            'graduation_year' => 2028,
+        ])->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('members', [
+            'user_id' => $userId,
+            'class' => 'X RPL 1',
+            'graduation_year' => 2028,
+        ]);
+    }
+
     public function test_member_phone_is_copied_to_saver_without_email_or_username_member_fields(): void
     {
         $admin = User::create([
@@ -96,7 +345,14 @@ class MemberActivationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('members', 'security_pin'));
         $this->assertNotSame('CONTACT001', User::findOrFail($userId)->username);
 
-        $this->postJson("/api/admin/members/{$userId}/activate", [
+        $teller = User::create([
+            'username' => 'teller-member-contact',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        Sanctum::actingAs($teller);
+        $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'contact-student',
             'password' => 'studentPass123',
             'security_pin' => '654321',
@@ -151,12 +407,12 @@ class MemberActivationTest extends TestCase
             'id_member' => $userId,
             'nominal' => 10000,
         ])->assertUnprocessable()
-            ->assertJsonPath('message', 'Siswa harus lebih dulu dibuatkan akun oleh Admin sebelum dapat melakukan setoran.');
+            ->assertJsonPath('message', 'Siswa harus lebih dulu diaktifkan oleh Teller sebelum dapat melakukan setoran.');
         $this->assertDatabaseHas('members', ['user_id' => $userId]);
         $this->assertDatabaseCount('savers', 0);
 
-        Sanctum::actingAs($admin);
-        $activation = $this->postJson("/api/admin/members/{$userId}/activate", [
+        Sanctum::actingAs($teller);
+        $activation = $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'student-two',
             'password' => 'studentPass123',
             'security_pin' => '222333',
@@ -193,6 +449,7 @@ class MemberActivationTest extends TestCase
             ->assertJsonPath('data.rekening_aktif', true);
 
         Sanctum::actingAs($teller);
+        $this->openTellerService($teller);
         $saver = Nasabah::where('user_id', $userId)->firstOrFail();
         $this->postJson('/api/teller/nasabah/scan', ['query' => 'STU002'])
             ->assertOk()
@@ -247,6 +504,7 @@ class MemberActivationTest extends TestCase
             'pin_keamanan' => '123456',
         ]);
         Sanctum::actingAs($teller);
+        $this->openTellerService($teller);
 
         $this->postJson('/api/teller/transaksi/setor', [
             'id_nasabah' => $saver->id,
@@ -254,6 +512,86 @@ class MemberActivationTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.no_rekening', 'REC20260001')
             ->assertJsonPath('data.saldo_akhir', 1000);
+    }
+
+    public function test_teller_cash_updates_with_deposits_and_withdrawals_and_prevents_overdraft(): void
+    {
+        $teller = User::create([
+            'username' => 'teller-cash-limit',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller Cash Limit',
+            'role' => 'teller',
+        ]);
+        $otherTeller = User::create([
+            'username' => 'teller-other-cash',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller Other Cash',
+            'role' => 'teller',
+        ]);
+        $this->openTellerService($teller, 10000000);
+        $saver = Nasabah::create([
+            'no_rekening' => 'REC20260031',
+            'nis' => 'STU031',
+            'nama_siswa' => 'Cash Limit Saver',
+            'jenis_kelamin' => 'Laki-laki',
+            'pin_keamanan' => '123456',
+        ]);
+        Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $otherTeller->id,
+            'tanggal' => now(),
+            'jenis_trans' => 'setor',
+            'nominal' => 50000000,
+        ]);
+        Sanctum::actingAs($teller);
+
+        $this->postJson('/api/teller/transaksi/setor', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 2000000,
+        ])->assertCreated();
+        $this->getJson('/api/teller/modal-awal')
+            ->assertOk()
+            ->assertJsonPath('data.nominal', 10000000)
+            ->assertJsonPath('data.total_setoran', 2000000)
+            ->assertJsonPath('data.sisa_modal', 12000000);
+
+        $this->postJson('/api/teller/transaksi/tarik', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 1000000,
+            'pin_keamanan' => '123456',
+        ])->assertCreated()
+            ->assertJsonPath('data.saldo_akhir', 51000000);
+
+        $this->getJson('/api/teller/modal-awal')
+            ->assertOk()
+            ->assertJsonPath('data.nominal', 10000000)
+            ->assertJsonPath('data.total_setoran', 2000000)
+            ->assertJsonPath('data.total_penarikan', 1000000)
+            ->assertJsonPath('data.sisa_modal', 11000000);
+
+        $this->postJson('/api/teller/transaksi/tarik', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 11000001,
+            'pin_keamanan' => '123456',
+        ])->assertUnprocessable()
+            ->assertJsonPath('sisa_modal', 11000000)
+            ->assertJsonPath('maksimal_bisa_ditarik', 11000000);
+
+        $this->postJson('/api/teller/transaksi/tarik', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 11000000,
+            'pin_keamanan' => '123456',
+        ])->assertCreated();
+
+        $this->getJson('/api/teller/modal-awal')
+            ->assertJsonPath('data.sisa_modal', 0);
+        $this->postJson('/api/teller/transaksi/tarik', [
+            'id_nasabah' => $saver->id,
+            'nominal' => 1000,
+            'pin_keamanan' => '123456',
+        ])->assertUnprocessable()
+            ->assertJsonPath('sisa_modal', 0);
+        $this->assertDatabaseCount('transaksi', 4);
     }
 
     public function test_supervisor_transaction_report_loads_deposits_and_withdrawals(): void
@@ -600,7 +938,7 @@ class MemberActivationTest extends TestCase
         $this->assertDatabaseCount('members', 0);
     }
 
-    public function test_admin_can_activate_member_with_submitted_password_and_pin(): void
+    public function test_teller_can_activate_member_with_submitted_password_and_pin(): void
     {
         $admin = User::create([
             'username' => 'admin-activate',
@@ -620,7 +958,15 @@ class MemberActivationTest extends TestCase
         ])->assertCreated();
 
         $userId = $memberResponse->json('data.user_id');
-        $activation = $this->postJson("/api/admin/members/{$userId}/activate", [
+        $teller = User::create([
+            'username' => 'teller-activate',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        Sanctum::actingAs($teller);
+        $this->openTellerService($teller);
+        $activation = $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'student-seven',
             'password' => 'studentPass123',
             'security_pin' => '654321',
@@ -639,7 +985,7 @@ class MemberActivationTest extends TestCase
         $saver = Nasabah::where('user_id', $userId)->firstOrFail();
         $this->assertDatabaseHas('transaksi', [
             'id_nasabah' => $saver->id,
-            'id_user' => $admin->id,
+            'id_user' => $teller->id,
             'jenis_trans' => 'setor',
             'nominal' => 25000,
         ]);
@@ -656,7 +1002,7 @@ class MemberActivationTest extends TestCase
             'posisi' => 'kredit',
             'jumlah' => 25000,
         ]);
-        $this->getJson('/api/admin/savers')
+        $this->getJson('/api/teller/savers')
             ->assertOk()
             ->assertJsonPath('data.0.username', 'student-seven');
         $this->postJson('/api/auth/login-nasabah', [
@@ -683,7 +1029,13 @@ class MemberActivationTest extends TestCase
         ])->assertCreated();
         $userId = $member->json('data.user_id');
 
-        $this->postJson("/api/admin/members/{$userId}/activate", [
+        Sanctum::actingAs(User::create([
+            'username' => 'teller-email-activation',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]));
+        $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'student-twenty',
             'email' => '  Student.Twenty@example.com ',
             'password' => 'studentPass123',
@@ -701,7 +1053,7 @@ class MemberActivationTest extends TestCase
         ]);
     }
 
-    public function test_supervisor_can_activate_a_member_and_move_it_to_savers(): void
+    public function test_supervisor_cannot_activate_member_but_teller_can(): void
     {
         Sanctum::actingAs(User::create([
             'username' => 'supervisor-activate',
@@ -722,7 +1074,20 @@ class MemberActivationTest extends TestCase
         ])->assertCreated();
 
         $userId = $memberResponse->json('data.user_id');
-        $activation = $this->postJson("/api/admin/members/{$userId}/activate", [
+        $this->postJson("/api/admin/members/{$userId}/activate", [
+            'username' => 'student-twelve',
+            'password' => 'studentPass123',
+            'security_pin' => '234567',
+            'saldo_awal' => 0,
+        ])->assertMethodNotAllowed();
+        $teller = User::create([
+            'username' => 'teller-supervisor-test',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        Sanctum::actingAs($teller);
+        $activation = $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'student-twelve',
             'password' => 'studentPass123',
             'security_pin' => '234567',
@@ -761,7 +1126,13 @@ class MemberActivationTest extends TestCase
         ])->assertCreated();
         $userId = $memberResponse->json('data.user_id');
 
-        $this->postJson("/api/admin/members/{$userId}/activate", [
+        Sanctum::actingAs(User::create([
+            'username' => 'teller-saver-status',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]));
+        $this->postJson("/api/teller/members/{$userId}/activate", [
             'username' => 'student-nine',
             'password' => 'studentPass123',
             'security_pin' => '345678',
@@ -769,6 +1140,7 @@ class MemberActivationTest extends TestCase
         ])->assertCreated();
         $saverId = Nasabah::where('user_id', $userId)->value('id');
 
+        Sanctum::actingAs($admin);
         $this->patchJson("/api/admin/savers/{$saverId}/status", ['is_active' => false])->assertOk();
         $this->assertDatabaseHas('users', ['id' => $userId, 'is_active' => false]);
         $this->postJson('/api/auth/login-nasabah', [
@@ -784,6 +1156,7 @@ class MemberActivationTest extends TestCase
             'role' => 'teller',
         ]);
         Sanctum::actingAs($teller);
+        $this->openTellerService($teller);
         $this->postJson('/api/teller/nasabah/scan', ['query' => 'STU009'])
             ->assertForbidden();
         $this->postJson('/api/teller/transaksi/setor', [

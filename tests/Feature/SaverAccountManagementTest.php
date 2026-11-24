@@ -83,6 +83,13 @@ class SaverAccountManagementTest extends TestCase
             'jenis_trans' => 'setor',
             'nominal' => 10000,
         ]);
+        Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $teller->id,
+            'tanggal' => now(),
+            'jenis_trans' => 'tarik',
+            'nominal' => 10000,
+        ]);
 
         Sanctum::actingAs($admin);
         $this->deleteJson("/api/admin/savers/{$saver->id}")
@@ -103,6 +110,99 @@ class SaverAccountManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('setoran.0.nasabah', 'Student History')
             ->assertJsonPath('setoran.0.no_rekening', 'REC20260002');
+    }
+
+    public function test_admin_cannot_delete_a_saver_that_still_has_balance(): void
+    {
+        $admin = User::create([
+            'username' => 'admin-saver-balance',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]);
+        $teller = User::create([
+            'username' => 'teller-saver-balance',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        $saver = Nasabah::create([
+            'no_rekening' => 'REC20260005',
+            'nis' => 'SAVER005',
+            'nama_siswa' => 'Student Balance',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+        Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $teller->id,
+            'tanggal' => now(),
+            'jenis_trans' => 'setor',
+            'nominal' => 50000,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $response = $this->deleteJson("/api/admin/savers/{$saver->id}");
+
+        $response->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonFragment(['message' => 'Akun masih memiliki saldo 50.000. Tarik seluruh saldo di Teller sebelum menghapus akun.']);
+
+        $this->assertDatabaseHas('savers', ['id' => $saver->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('transaksi', ['id_nasabah' => $saver->id]);
+    }
+
+    public function test_admin_can_delete_a_saver_after_the_balance_is_fully_withdrawn(): void
+    {
+        $admin = User::create([
+            'username' => 'admin-saver-withdraw',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]);
+        $teller = User::create([
+            'username' => 'teller-saver-withdraw',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        $saverUser = User::create([
+            'username' => 'saver-withdraw',
+            'password' => 'secret123',
+            'nama_petugas' => 'Student Withdraw',
+            'role' => 'nasabah',
+        ]);
+        $saver = Nasabah::create([
+            'no_rekening' => 'REC20260006',
+            'nis' => 'SAVER006',
+            'nama_siswa' => 'Student Withdraw',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+            'user_id' => $saverUser->id,
+        ]);
+        Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $teller->id,
+            'tanggal' => now(),
+            'jenis_trans' => 'setor',
+            'nominal' => 10000,
+        ]);
+        Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $teller->id,
+            'tanggal' => now(),
+            'jenis_trans' => 'tarik',
+            'nominal' => 10000,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $this->deleteJson("/api/admin/savers/{$saver->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSoftDeleted('savers', ['id' => $saver->id]);
+        $this->assertDatabaseHas('transaksi', ['id_nasabah' => $saver->id]);
+        $this->assertDatabaseMissing('users', ['id' => $saverUser->id]);
     }
 
     public function test_supervisor_can_delete_a_saver_account_as_an_admin(): void
@@ -166,5 +266,79 @@ class SaverAccountManagementTest extends TestCase
             'username' => 'saver-supervisor-managed',
             'email' => 'supervisor-managed@example.com',
         ]);
+    }
+
+    public function test_laporan_transaksi_supports_daily_monthly_and_nasabah_filters(): void
+    {
+        $admin = User::create([
+            'username' => 'admin-laporan-filter',
+            'password' => 'secret123',
+            'nama_petugas' => 'Administrator',
+            'role' => 'admin',
+        ]);
+        $teller = User::create([
+            'username' => 'teller-laporan-filter',
+            'password' => 'secret123',
+            'nama_petugas' => 'Teller',
+            'role' => 'teller',
+        ]);
+        $saverA = Nasabah::create([
+            'no_rekening' => 'REC20260007',
+            'nis' => 'SAVER007',
+            'nama_siswa' => 'Student One',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+        $saverB = Nasabah::create([
+            'no_rekening' => 'REC20260008',
+            'nis' => 'SAVER008',
+            'nama_siswa' => 'Student Two',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+
+        $buat = fn (Nasabah $saver, string $tanggal, string $jenis, int $nominal) => Transaksi::create([
+            'id_nasabah' => $saver->id,
+            'id_user' => $teller->id,
+            'tanggal' => $tanggal,
+            'jenis_trans' => $jenis,
+            'nominal' => $nominal,
+        ]);
+
+        $buat($saverA, '2026-05-10 09:00:00', 'setor', 20000);
+        $buat($saverA, '2026-05-11 10:00:00', 'tarik', 5000);
+        $buat($saverB, '2026-06-01 11:00:00', 'setor', 30000);
+        $buat($saverB, '2026-06-01 12:00:00', 'tarik', 30000);
+
+        Sanctum::actingAs($admin);
+
+        // Harian: hanya transaksi tanggal 2026-06-01
+        $this->getJson('/api/supervisor/laporan-transaksi?tanggal=2026-06-01')
+            ->assertOk()
+            ->assertJsonPath('summary.total_setoran', 30000)
+            ->assertJsonPath('summary.total_penarikan', 30000)
+            ->assertJsonCount(1, 'setoran');
+
+        // Bulanan: hanya transaksi Mei 2026
+        $this->getJson('/api/supervisor/laporan-transaksi?bulan=5&tahun=2026')
+            ->assertOk()
+            ->assertJsonPath('summary.total_setoran', 20000)
+            ->assertJsonPath('summary.total_penarikan', 5000);
+
+        // Per nasabah: hanya riwayat saverA
+        $this->getJson("/api/supervisor/laporan-transaksi?nasabah_id={$saverA->id}")
+            ->assertOk()
+            ->assertJsonPath('summary.total_setoran', 20000)
+            ->assertJsonPath('summary.total_penarikan', 5000)
+            ->assertJsonMissing(['nasabah' => 'Student Two']);
+
+        // Filter tanpa pasangan bulan/tahun ditolak
+        $this->getJson('/api/supervisor/laporan-transaksi?bulan=5')
+            ->assertStatus(422);
+
+        // Dropdown nasabah tersedia di response
+        $this->getJson('/api/supervisor/laporan-transaksi')
+            ->assertOk()
+            ->assertJsonFragment(['nama_siswa' => 'Student One']);
     }
 }

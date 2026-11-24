@@ -12,7 +12,7 @@ class PublicNasabahController extends Controller
 {
     public function bankStatus()
     {
-        $activeTellerCount = ModalAwalKas::query()
+        $eligibleTellers = ModalAwalKas::query()
             ->whereDate('tanggal', today())
             ->whereHas('teller', fn ($query) => $query
                 ->where('role', 'teller')
@@ -21,16 +21,32 @@ class PublicNasabahController extends Controller
                 $query->select(DB::raw(1))
                     ->from('penutupan_kas')
                     ->whereColumn('penutupan_kas.id_teller', 'modal_awal_kas.id_teller')
-                    ->whereDate('penutupan_kas.tanggal_penutupan', today());
-            })
-            ->count();
+                    ->whereDate('penutupan_kas.tanggal_penutupan', today())
+                    ->whereIn('penutupan_kas.status', ['pending', 'approved']);
+            });
+        $supportsServiceStatus = ModalAwalKas::supportsServiceStatus();
+        $openTellerCount = $supportsServiceStatus
+            ? (clone $eligibleTellers)->where('status_layanan', 'open')->count()
+            : $eligibleTellers->count();
+        $restingTellerCount = $supportsServiceStatus
+            ? (clone $eligibleTellers)->where('status_layanan', 'resting')->count()
+            : 0;
+        $status = $openTellerCount > 0
+            ? 'open'
+            : ($restingTellerCount > 0 ? 'resting' : 'closed');
 
         return response()->json([
             'success' => true,
             'data' => [
-                'is_open' => $activeTellerCount > 0,
-                'status' => $activeTellerCount > 0 ? 'open' : 'closed',
-                'active_tellers' => $activeTellerCount,
+                'is_open' => $openTellerCount > 0,
+                'status' => $status,
+                'status_label' => match ($status) {
+                    'open' => 'Buka',
+                    'resting' => 'Istirahat',
+                    default => 'Tutup',
+                },
+                'active_tellers' => $openTellerCount,
+                'resting_tellers' => $restingTellerCount,
                 'tanggal' => today()->toDateString(),
             ],
         ]);

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -79,6 +80,141 @@ class CredentialRecoveryTest extends TestCase
             'password' => 'new-password-123',
         ])->assertOk();
         $this->assertDatabaseCount('credential_reset_otps', 0);
+    }
+
+    public function test_nasabah_can_reset_password_using_only_the_email_registered_on_saver(): void
+    {
+        Mail::fake();
+        RateLimiter::clear('credential-reset:'.hash('sha256', 'saver.reset@example.com|password'));
+        RateLimiter::clear('credential-reset-ip:'.hash(
+            'sha256',
+            (string) $this->app['request']->ip()
+        ));
+        $user = User::create([
+            'username' => 'student-saver-email-reset',
+            'email' => 'account.reset@example.com',
+            'password' => 'old-password',
+            'nama_petugas' => 'Student Saver Email Reset',
+            'role' => 'nasabah',
+            'is_active' => true,
+        ]);
+        Nasabah::create([
+            'user_id' => $user->id,
+            'email' => 'saver.reset@example.com',
+            'nis' => 'RESET005',
+            'nama_siswa' => 'Student Saver Email Reset',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+
+        $this->postJson('/api/auth/forgot-credential', [
+            'email' => 'SAVER.RESET@example.com',
+            'credential' => 'password',
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath(
+                'message',
+                'Kode OTP telah dikirim ke email yang terdaftar pada data Saver.'
+            );
+
+        $otp = null;
+        Mail::assertSent(CredentialResetOtpMail::class, function (CredentialResetOtpMail $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return $mail->hasTo('saver.reset@example.com')
+                && $mail->credential === 'password';
+        });
+        $this->assertNotNull($otp);
+
+        $this->postJson('/api/auth/verify-credential-reset-otp', [
+            'email' => 'saver.reset@example.com',
+            'credential' => 'password',
+            'otp' => $otp,
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->postJson('/api/auth/reset-credential', [
+            'email' => 'saver.reset@example.com',
+            'credential' => 'password',
+            'otp' => $otp,
+            'new_password' => 'new-saver-password',
+            'new_password_confirmation' => 'new-saver-password',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertTrue(Hash::check('new-saver-password', $user->fresh()->password));
+    }
+
+    public function test_password_recovery_reports_mail_delivery_failure(): void
+    {
+        $email = 'saver.mail-failure@example.com';
+        RateLimiter::clear('credential-reset:'.hash('sha256', $email.'|password'));
+        RateLimiter::clear('credential-reset-ip:'.hash(
+            'sha256',
+            (string) $this->app['request']->ip()
+        ));
+        $user = User::create([
+            'username' => 'student-mail-failure',
+            'email' => 'account.mail-failure@example.com',
+            'password' => 'old-password',
+            'nama_petugas' => 'Student Mail Failure',
+            'role' => 'nasabah',
+            'is_active' => true,
+        ]);
+        Nasabah::create([
+            'user_id' => $user->id,
+            'email' => $email,
+            'nis' => 'RESETMAIL',
+            'nama_siswa' => 'Student Mail Failure',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+        Mail::shouldReceive('to')
+            ->once()
+            ->with($email)
+            ->andThrow(new \RuntimeException('SMTP unavailable'));
+
+        $this->postJson('/api/auth/forgot-credential', [
+            'email' => $email,
+            'credential' => 'password',
+        ])->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath(
+                'message',
+                'Email OTP gagal dikirim. Periksa konfigurasi email server, lalu coba kembali.'
+            );
+
+        $this->assertDatabaseCount('credential_reset_otps', 0);
+    }
+
+    public function test_password_recovery_rejects_email_not_registered_on_a_saver(): void
+    {
+        Mail::fake();
+        $user = User::create([
+            'username' => 'student-account-email-only',
+            'email' => 'account.only@example.com',
+            'password' => 'secret123',
+            'nama_petugas' => 'Student Account Email Only',
+            'role' => 'nasabah',
+            'is_active' => true,
+        ]);
+        Nasabah::create([
+            'user_id' => $user->id,
+            'email' => 'saver.only@example.com',
+            'nis' => 'RESET006',
+            'nama_siswa' => 'Student Account Email Only',
+            'kelas' => 'XI RPL 1',
+            'pin_keamanan' => '123456',
+        ]);
+
+        $this->postJson('/api/auth/forgot-credential', [
+            'email' => 'account.only@example.com',
+            'credential' => 'password',
+        ])->assertUnprocessable()
+            ->assertJsonPath(
+                'message',
+                'Email belum terdaftar pada data Saver. Periksa kembali alamat email.'
+            );
+
+        Mail::assertNothingSent();
     }
 
     public function test_nasabah_can_reset_pin_using_email_otp(): void

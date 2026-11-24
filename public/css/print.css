@@ -3,6 +3,11 @@
         margin: 0;
     }
 
+    @page receipt {
+        size: 80mm 140mm;
+        margin: 0;
+    }
+
     html,
     body {
         width: auto !important;
@@ -23,8 +28,9 @@
 
     body.printing-receipt #print-area {
         display: block !important;
+        page: receipt;
         position: static !important;
-        width: 72mm !important;
+        width: 80mm !important;
         min-height: 0 !important;
         box-sizing: border-box;
         margin: 0 auto !important;

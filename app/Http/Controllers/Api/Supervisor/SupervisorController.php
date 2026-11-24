@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Supervisor;
 
 use App\Http\Controllers\Controller;
 use App\Models\JurnalAkuntansi;
+use App\Models\Nasabah;
 use App\Models\PenutupanKas;
 use App\Models\Transaksi;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -13,12 +14,47 @@ use Illuminate\Support\Collection as SupportCollection;
 
 class SupervisorController extends Controller
 {
-    public function laporanTransaksi()
+    /**
+     * Filter opsional laporan transaksi teller:
+     * - tanggal            : rekap harian (YYYY-MM-DD)
+     * - bulan + tahun      : rekap bulanan
+     * - nasabah_id         : riwayat per nasabah
+     */
+    public function laporanTransaksi(Request $request)
     {
-        $transaksi = Transaksi::with([
+        $validated = $request->validate([
+            'tanggal' => 'nullable|date_format:Y-m-d',
+            'bulan' => 'nullable|integer|between:1,12',
+            'tahun' => 'nullable|integer|between:2000,2100',
+            'nasabah_id' => 'nullable|integer',
+        ]);
+
+        if (filled($validated['bulan'] ?? null) xor filled($validated['tahun'] ?? null)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Filter bulanan memerlukan bulan dan tahun sekaligus.',
+            ], 422);
+        }
+
+        $query = Transaksi::query()->with([
             'user:id,nama_petugas,username',
-            'nasabah:id,nama_siswa,no_rekening',
-        ])->latest('tanggal')->get();
+            'nasabah' => fn ($relation) => $relation->withTrashed(),
+        ]);
+
+        if (filled($validated['tanggal'] ?? null)) {
+            $query->whereDate('tanggal', $validated['tanggal']);
+        }
+
+        if (filled($validated['bulan'] ?? null) && filled($validated['tahun'] ?? null)) {
+            $query->whereMonth('tanggal', $validated['bulan'])
+                ->whereYear('tanggal', $validated['tahun']);
+        }
+
+        if (filled($validated['nasabah_id'] ?? null)) {
+            $query->where('id_nasabah', $validated['nasabah_id']);
+        }
+
+        $transaksi = $query->orderByDesc('tanggal')->orderByDesc('id')->get();
 
         $buatLaporan = static function ($item) {
             return [
@@ -36,6 +72,21 @@ class SupervisorController extends Controller
 
         return response()->json([
             'success' => true,
+            'filter' => [
+                'tanggal' => $validated['tanggal'] ?? null,
+                'bulan' => $validated['bulan'] ?? null,
+                'tahun' => $validated['tahun'] ?? null,
+                'nasabah_id' => $validated['nasabah_id'] ?? null,
+            ],
+            'nasabah_list' => Nasabah::withTrashed()
+                ->orderBy('nama_siswa')
+                ->get(['id', 'nama_siswa', 'no_rekening', 'deleted_at'])
+                ->map(fn (Nasabah $nasabah) => [
+                    'id' => $nasabah->id,
+                    'nama_siswa' => $nasabah->nama_siswa,
+                    'no_rekening' => $nasabah->no_rekening,
+                    'is_archived' => $nasabah->trashed(),
+                ]),
             'summary' => [
                 'total_setoran' => (int) $setoran->sum('nominal'),
                 'total_penarikan' => (int) $penarikan->sum('nominal'),
@@ -43,6 +94,84 @@ class SupervisorController extends Controller
             'setoran' => $setoran,
             'penarikan' => $penarikan,
         ]);
+    }
+
+    public function downloadLaporanTransaksiPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'tanggal' => 'nullable|date_format:Y-m-d',
+            'bulan' => 'nullable|integer|between:1,12',
+            'tahun' => 'nullable|integer|between:2000,2100',
+            'nasabah_id' => 'nullable|integer',
+        ]);
+
+        if (filled($validated['bulan'] ?? null) xor filled($validated['tahun'] ?? null)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Filter bulanan memerlukan bulan dan tahun sekaligus.',
+            ], 422);
+        }
+
+        $query = Transaksi::query()->with([
+            'user:id,nama_petugas,username',
+            'nasabah' => fn ($relation) => $relation->withTrashed(),
+        ]);
+
+        if (filled($validated['tanggal'] ?? null)) {
+            $query->whereDate('tanggal', $validated['tanggal']);
+        }
+        if (filled($validated['bulan'] ?? null) && filled($validated['tahun'] ?? null)) {
+            $query->whereMonth('tanggal', $validated['bulan'])
+                ->whereYear('tanggal', $validated['tahun']);
+        }
+        if (filled($validated['nasabah_id'] ?? null)) {
+            $query->where('id_nasabah', $validated['nasabah_id']);
+        }
+
+        $transactions = $query->orderByDesc('tanggal')->orderByDesc('id')->get();
+        $nasabah = filled($validated['nasabah_id'] ?? null)
+            ? Nasabah::withTrashed()->find($validated['nasabah_id'])
+            : null;
+        $period = 'Semua Transaksi';
+        if (filled($validated['tanggal'] ?? null)) {
+            $period = 'Harian - '.date('d-m-Y', strtotime($validated['tanggal']));
+        } elseif (filled($validated['bulan'] ?? null)) {
+            $period = 'Bulanan - '.sprintf('%02d/%04d', $validated['bulan'], $validated['tahun']);
+        }
+        $nasabahLabel = $nasabah
+            ? $nasabah->nama_siswa.' ('.$nasabah->no_rekening.')'
+            : 'Semua Nasabah';
+        $summary = [
+            'total_transaksi' => $transactions->count(),
+            'jumlah_setoran' => $transactions->where('jenis_trans', 'setor')->count(),
+            'jumlah_penarikan' => $transactions->where('jenis_trans', 'tarik')->count(),
+            'total_setoran' => (int) $transactions->where('jenis_trans', 'setor')->sum('nominal'),
+            'total_penarikan' => (int) $transactions->where('jenis_trans', 'tarik')->sum('nominal'),
+        ];
+        $rows = $transactions->map(fn (Transaksi $transaction) => [
+            'tanggal' => $transaction->tanggal,
+            'jenis_trans' => $transaction->jenis_trans,
+            'nasabah' => $transaction->nasabah?->nama_siswa ?? '-',
+            'no_rekening' => $transaction->nasabah?->no_rekening ?? '-',
+            'teller' => $transaction->user?->nama_petugas ?? $transaction->user?->username ?? '-',
+            'nominal' => (int) $transaction->nominal,
+        ])->values();
+
+        $filenameSuffix = filled($validated['tanggal'] ?? null)
+            ? $validated['tanggal']
+            : (filled($validated['bulan'] ?? null)
+                ? sprintf('%04d-%02d', $validated['tahun'], $validated['bulan'])
+                : 'semua');
+        if ($nasabah) {
+            $filenameSuffix .= '-nasabah-'.$nasabah->id;
+        }
+
+        return Pdf::loadView('pdf.laporan-transaksi', [
+            'period' => $period,
+            'nasabahLabel' => $nasabahLabel,
+            'summary' => $summary,
+            'transactions' => $rows,
+        ])->setPaper('a4', 'landscape')->download('rekap-transaksi-'.$filenameSuffix.'.pdf');
     }
 
     /**

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\MemberController;
 use App\Http\Controllers\Api\Admin\NasabahController;
+use App\Http\Controllers\Api\Admin\SaverClosureRequestController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeploymentController;
@@ -54,9 +55,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/savers', [NasabahController::class, 'index']);
         Route::get('/savers/{id}', [NasabahController::class, 'show']);
         Route::delete('/savers/{id}', [NasabahController::class, 'destroy']);
+        Route::middleware('role:admin,supervisor')->group(function () {
+            Route::get('/saver-closure-requests', [SaverClosureRequestController::class, 'index']);
+            Route::post('/saver-closure-requests/{id}/approve', [SaverClosureRequestController::class, 'approve']);
+            Route::post('/saver-closure-requests/{id}/reject', [SaverClosureRequestController::class, 'reject']);
+        });
         Route::post('/savers/{id}/credentials', [NasabahController::class, 'setCredentials']);
         Route::post('/members/import', [MemberController::class, 'import']);
-        Route::post('/members/{id}/activate', [MemberController::class, 'activate']);
+        Route::post('/members/promote-by-graduation-year', [MemberController::class, 'promoteByGraduationYear']);
+        Route::patch('/members/{id}/reclassify', [MemberController::class, 'reclassify']);
         Route::patch('/savers/{id}/status', [MemberController::class, 'setSaverStatus']);
         Route::apiResource('/members', MemberController::class);
         Route::get('/nasabah', [NasabahController::class, 'index']);
@@ -69,10 +76,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:teller')->prefix('teller')->group(function () {
         Route::get('/modal-awal', [PenutupanKasController::class, 'getModalAwal']);
         Route::post('/modal-awal', [PenutupanKasController::class, 'setModalAwal']);
+        Route::patch('/layanan/status', [PenutupanKasController::class, 'setServiceStatus']);
+        Route::get('/savers', [NasabahController::class, 'index']);
+        Route::apiResource('/members', MemberController::class);
+        Route::post('/members/{id}/activate', [MemberController::class, 'activate']);
         Route::post('/nasabah/scan', [TransaksiController::class, 'scanNasabah']);
         Route::post('/savers/{id}/forgot-pin', [AuthController::class, 'sendSaverPinResetOtp']);
         Route::post('/transaksi/setor', [TransaksiController::class, 'setorTunai']);
         Route::post('/transaksi/tarik', [TransaksiController::class, 'tarikTunai']);
+        Route::post('/savers/{id}/close-account', [TransaksiController::class, 'closeSaverAccount']);
         Route::get('/penutupan-kas/summary-today', [PenutupanKasController::class, 'ringkasanHariIni']);
         Route::get('/penutupan-kas/history', [PenutupanKasController::class, 'riwayat']);
         Route::post('/penutupan-kas/submit', [PenutupanKasController::class, 'submit']);
@@ -83,6 +95,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // =========================================================================
     Route::middleware('role:admin,supervisor')->prefix('supervisor')->group(function () {
         Route::get('/laporan-transaksi', [SupervisorController::class, 'laporanTransaksi']);
+        Route::get('/laporan-transaksi/pdf', [SupervisorController::class, 'downloadLaporanTransaksiPdf']);
         Route::get('/penutupan-kas', [SupervisorController::class, 'listPenutupanKas']);
         Route::get('/penutupan-kas/monthly', [SupervisorController::class, 'monthlyTransactionRecap']);
         Route::get('/penutupan-kas/monthly-pdf', [SupervisorController::class, 'downloadMonthlyPenutupanKasPdf']);

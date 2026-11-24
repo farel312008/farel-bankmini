@@ -130,6 +130,11 @@ class CashClosureReviewTest extends TestCase
             'nama_petugas' => 'Teller',
             'role' => 'teller',
         ]);
+        ModalAwalKas::create([
+            'id_teller' => $teller->id,
+            'tanggal' => today(),
+            'nominal' => 100000,
+        ]);
         $penutupan = PenutupanKas::create([
             'id_teller' => $teller->id,
             'tanggal_penutupan' => today(),

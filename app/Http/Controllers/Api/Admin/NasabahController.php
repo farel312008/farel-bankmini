@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Nasabah;
+use App\Models\SaverClosureRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +17,13 @@ class NasabahController extends Controller
     {
         $nasabah = Nasabah::with('user:id,username,is_active,email')
             ->orderBy('nama_siswa')
-            ->get()
-            ->map(function ($item) {
+            ->get();
+        $pendingSaverRequests = SaverClosureRequest::whereIn('id_saver', $nasabah->pluck('id'))
+            ->where('status', 'pending')
+            ->pluck('id', 'id_saver')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $nasabah = $nasabah->map(function ($item) use ($pendingSaverRequests) {
                 return [
                     'id' => $item->id,
                     'no_rekening' => $item->no_rekening,
@@ -32,6 +38,8 @@ class NasabahController extends Controller
                     'is_active' => (bool) $item->user?->is_active,
                     'has_login' => $item->user !== null,
                     'has_email' => filled($item->email ?? $item->user?->email),
+                    'closure_pending' => isset($pendingSaverRequests[$item->id]),
+                    'closure_request_id' => $pendingSaverRequests[$item->id] ?? null,
                     'created_at' => $item->created_at,
                 ];
             });
@@ -109,8 +117,29 @@ class NasabahController extends Controller
 
     public function destroy(int $id)
     {
-        DB::transaction(function () use ($id) {
+        return DB::transaction(function () use ($id) {
             $saver = Nasabah::with('user')->lockForUpdate()->findOrFail($id);
+
+            if (SaverClosureRequest::where('id_saver', $saver->id)->where('status', 'pending')->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pengajuan penghapusan Saver masih menunggu persetujuan Admin. Setujui atau tolak pengajuan tersebut terlebih dahulu.',
+                ], 409);
+            }
+            if (SaverClosureRequest::where('id_saver', $saver->id)->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun ini sudah melalui proses pengajuan penutupan. Penghapusan hanya dapat dilakukan melalui persetujuan Admin atas pengajuan Teller.',
+                ], 409);
+            }
+
+            if ($saver->saldo !== 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun masih memiliki saldo ' . number_format($saver->saldo, 0, ',', '.') . '. Tarik seluruh saldo di Teller sebelum menghapus akun.',
+                ], 422);
+            }
+
             if ($saver->user && $saver->user->role !== 'nasabah') {
                 abort(409, 'Akun Saver terhubung ke akun yang bukan akun nasabah dan tidak dapat diarsipkan.');
             }
@@ -122,11 +151,11 @@ class NasabahController extends Controller
             $saver->forceFill(['user_id' => null])->save();
             $saver->delete();
             $saver->user?->delete();
-        });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Akun Saver dihapus dari daftar aktif. Data rekening dan seluruh riwayat transaksi tetap tersimpan untuk audit.',
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Akun Saver dihapus dari daftar aktif. Data rekening dan seluruh riwayat transaksi tetap tersimpan untuk audit.',
+            ]);
+        });
     }
 }

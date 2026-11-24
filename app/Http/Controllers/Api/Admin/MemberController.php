@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\JurnalAkuntansi;
 use App\Models\Member;
+use App\Models\ModalAwalKas;
 use App\Models\Nasabah;
+use App\Models\PenutupanKas;
 use App\Models\Transaksi;
 use App\Models\User;
 use App\Services\MemberSpreadsheetReader;
 use App\Services\SaverAccountNumberGenerator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -232,6 +235,7 @@ class MemberController extends Controller
                 Rule::unique('savers', 'nis'),
             ],
             'student_name' => 'required|string|max:100',
+            'class' => 'nullable|string|max:20',
             'gender' => ['nullable', Rule::in(['Laki-laki', 'Perempuan'])],
             'graduation_year' => 'required|integer|between:2000,2100',
             'nomor_hp' => 'nullable|string|max:20',
@@ -267,6 +271,27 @@ class MemberController extends Controller
             'security_pin' => 'required|digits:6',
             'saldo_awal' => 'required|integer|min:0',
         ]);
+
+        if ($validated['saldo_awal'] > 0) {
+            $modalAwal = ModalAwalKas::where('id_teller', $request->user()->id)
+                ->whereDate('tanggal', Carbon::today())
+                ->first();
+            $kasDitutup = PenutupanKas::where('id_teller', $request->user()->id)
+                ->whereDate('tanggal_penutupan', Carbon::today())
+                ->whereIn('status', ['pending', 'approved'])
+                ->exists();
+
+            if (
+                ! $modalAwal
+                || (ModalAwalKas::supportsServiceStatus() && $modalAwal->status_layanan !== 'open')
+                || $kasDitutup
+            ) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Simpan modal awal dan buka layanan sebelum mencatat saldo pembukaan sebagai transaksi.',
+                ], 422);
+            }
+        }
 
         $saver = DB::transaction(function () use ($member, $validated, $accountNumberGenerator, $request) {
             $user = $member->user;
@@ -383,6 +408,7 @@ class MemberController extends Controller
                 Rule::unique('savers', 'nis'),
             ],
             'student_name' => 'required|string|max:100',
+            'class' => 'nullable|string|max:20',
             'gender' => ['nullable', Rule::in(['Laki-laki', 'Perempuan'])],
             'graduation_year' => 'required|integer|between:2000,2100',
             'nomor_hp' => 'nullable|string|max:20',
@@ -391,6 +417,9 @@ class MemberController extends Controller
         DB::transaction(function () use ($member, $validated) {
             $member->student_number = $validated['student_number'];
             $member->student_name = $validated['student_name'];
+            if (array_key_exists('class', $validated)) {
+                $member->class = $validated['class'];
+            }
             $member->gender = $validated['gender'] ?? null;
             $member->graduation_year = $validated['graduation_year'];
             if (array_key_exists('nomor_hp', $validated)) {
@@ -405,6 +434,100 @@ class MemberController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Data anggota berhasil diperbarui.',
+            'data' => $this->formatMember($member->fresh()),
+        ]);
+    }
+
+    public function promoteByGraduationYear(Request $request)
+    {
+        $validated = $request->validate([
+            'graduation_year' => 'required|integer|between:2000,2100',
+        ]);
+
+        return DB::transaction(function () use ($validated) {
+            $members = Member::where('graduation_year', $validated['graduation_year'])
+                ->orderBy('user_id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($members->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada data member untuk tahun kelulusan tersebut.',
+                ], 404);
+            }
+
+            $promotions = [];
+            $unsupported = [];
+            $alreadyGraduating = 0;
+            foreach ($members as $member) {
+                if (! preg_match('/^(XII|XI|X|12|11|10)(?=\s|$)(.*)$/i', trim((string) $member->class), $matches)) {
+                    $unsupported[] = $member->student_number.' ('.($member->class ?: 'kelas kosong').')';
+
+                    continue;
+                }
+
+                $grade = strtoupper($matches[1]);
+                if (in_array($grade, ['XII', '12'], true)) {
+                    $alreadyGraduating++;
+
+                    continue;
+                }
+
+                $nextGrade = match ($grade) {
+                    'X', '10' => 'XI',
+                    'XI', '11' => 'XII',
+                };
+                $promotions[] = [$member, $nextGrade.$matches[2]];
+            }
+
+            if ($unsupported !== []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kenaikan kelas dibatalkan karena format kelas beberapa member tidak dikenali. Perbaiki data kelas terlebih dahulu.',
+                    'errors' => $unsupported,
+                ], 422);
+            }
+
+            foreach ($promotions as [$member, $nextClass]) {
+                $member->class = $nextClass;
+                $member->save();
+            }
+
+            if ($promotions === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada member yang dapat dinaikkan; semua siswa pada tahun kelulusan ini sudah berada di kelas XII.',
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => count($promotions).' member berhasil dinaikkan kelas. Tahun kelulusan tidak diubah; '.$alreadyGraduating.' member kelas XII tetap.',
+                'data' => [
+                    'promoted' => count($promotions),
+                    'already_graduating' => $alreadyGraduating,
+                    'graduation_year' => (int) $validated['graduation_year'],
+                ],
+            ]);
+        });
+    }
+
+    public function reclassify(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'class' => 'required|string|max:20',
+            'graduation_year' => 'required|integer|between:2000,2100',
+        ]);
+
+        $member = Member::findOrFail($id);
+        $member->class = trim($validated['class']);
+        $member->graduation_year = $validated['graduation_year'];
+        $member->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Kelas dan tahun kelulusan siswa berhasil diperbarui.',
             'data' => $this->formatMember($member->fresh()),
         ]);
     }

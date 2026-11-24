@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -19,17 +20,32 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'email' => 'required|email',
-            'username' => 'required|string|max:50',
+            'username' => 'nullable|string|max:50',
             'credential' => ['required', Rule::in(['password'])],
         ]);
 
         $email = mb_strtolower($validated['email']);
-        $username = $validated['username'];
+        $username = $validated['username'] ?? null;
         $credential = $validated['credential'];
+        $user = $this->findPasswordRecoveryUser($email, $username);
+        if (! $user && ! $username) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email belum terdaftar pada data Saver. Periksa kembali alamat email.',
+            ], 422);
+        }
+
         $emailKey = 'credential-reset:'.hash('sha256', $email.'|'.$credential);
         $ipKey = 'credential-reset-ip:'.hash('sha256', (string) $request->ip());
 
         if (RateLimiter::tooManyAttempts($emailKey, 1) || RateLimiter::tooManyAttempts($ipKey, 5)) {
+            if (! $username) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Permintaan kode OTP terlalu sering. Tunggu sebentar sebelum mencoba kembali.',
+                ], 429);
+            }
+
             return $this->credentialResetRequestAccepted();
         }
 
@@ -37,7 +53,6 @@ class AuthController extends Controller
         RateLimiter::hit($ipKey, 60);
         DB::table('credential_reset_otps')->where('expires_at', '<', now())->delete();
 
-        $user = User::where('email', $email)->where('username', $username)->first();
         if (! $user) {
             return $this->credentialResetRequestAccepted();
         }
@@ -55,14 +70,34 @@ class AuthController extends Controller
         );
 
         try {
-            Mail::to($user->email)->send(new CredentialResetOtpMail($otp, $credential));
+            $recipient = $username ? $user->email : $user->saver->email;
+            Mail::to($recipient)->send(new CredentialResetOtpMail($otp, $credential));
         } catch (\Throwable $exception) {
             DB::table('credential_reset_otps')
                 ->where('user_id', $user->id)
                 ->where('credential', $credential)
                 ->delete();
 
-            throw $exception;
+            RateLimiter::clear($emailKey);
+            Log::error('Failed to send credential reset OTP.', [
+                'exception' => $exception::class,
+            ]);
+
+            if (! $username) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email OTP gagal dikirim. Periksa konfigurasi email server, lalu coba kembali.',
+                ], 503);
+            }
+
+            return $this->credentialResetRequestAccepted();
+        }
+
+        if (! $username) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Kode OTP telah dikirim ke email yang terdaftar pada data Saver.',
+            ]);
         }
 
         return $this->credentialResetRequestAccepted();
@@ -130,14 +165,15 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'email' => 'required|email',
-            'username' => 'required|string|max:50',
+            'username' => 'nullable|string|max:50',
             'credential' => ['required', Rule::in(['password'])],
             'otp' => 'required|digits:6',
         ]);
 
-        $user = User::where('email', mb_strtolower($validated['email']))
-            ->where('username', $validated['username'])
-            ->first();
+        $user = $this->findPasswordRecoveryUser(
+            mb_strtolower($validated['email']),
+            $validated['username'] ?? null
+        );
 
         if (! $user) {
             return $this->invalidCredentialResetOtp();
@@ -187,7 +223,7 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'email' => 'required_if:credential,password|nullable|email',
-            'username' => 'required_if:credential,password|nullable|string|max:50',
+            'username' => 'nullable|string|max:50',
             'saver_id' => 'required_if:credential,pin|nullable|integer|exists:savers,id',
             'credential' => ['required', Rule::in(['password', 'pin'])],
             'otp' => 'required|digits:6',
@@ -201,9 +237,10 @@ class AuthController extends Controller
             : null;
         $user = $credential === 'pin'
             ? $saver?->user
-            : User::where('email', mb_strtolower($validated['email']))
-                ->where('username', $validated['username'])
-                ->first();
+            : $this->findPasswordRecoveryUser(
+                mb_strtolower($validated['email']),
+                $validated['username'] ?? null
+            );
 
         if (! $user || ($credential === 'pin' && ($user->role !== 'nasabah' || ! $saver->email))) {
             return response()->json([
@@ -282,6 +319,21 @@ class AuthController extends Controller
             'success' => false,
             'message' => 'Kode OTP tidak valid atau sudah kedaluwarsa.',
         ], 422);
+    }
+
+    private function findPasswordRecoveryUser(string $email, ?string $username): ?User
+    {
+        if ($username) {
+            return User::where('email', $email)
+                ->where('username', $username)
+                ->first();
+        }
+
+        return User::where('role', 'nasabah')
+            ->whereHas('saver', fn ($query) => $query
+                ->whereRaw('LOWER(email) = ?', [$email]))
+            ->with('saver')
+            ->first();
     }
 
     /**

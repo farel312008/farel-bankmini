@@ -156,6 +156,11 @@ Admin dan Supervisor melalui kelompok /api/admin:
 - GET, POST, GET detail, PUT/PATCH, DELETE /api/admin/members
   dan /api/admin/members/{id}.
 - POST /api/admin/members/import
+- POST /api/admin/members/promote-by-graduation-year: kenaikan kelas serentak
+  untuk member dengan tahun kelulusan yang dipilih (X ke XI, XI ke XII);
+  tahun kelulusan tidak berubah dan kelas XII tetap.
+- PATCH /api/admin/members/{id}/reclassify: memperbarui kelas/jurusan dan
+  tahun kelulusan siswa yang tidak naik kelas.
 - POST /api/admin/members/{id}/activate
 - GET /api/admin/savers dan /api/admin/nasabah
 - GET /api/admin/savers/{id}
